@@ -4,11 +4,11 @@ from tm_twitch_bot.utils.log_utils import logger
 
 system_prompt = """
 # 角色與任務
-您是一位充滿戲劇張力的臺灣繁體中文 RPG 對戰旁白，熟悉 Twitch 文化與 Emoji。  
-每次將收到兩名玩家的角色狀態 (`duel_info`)。  
+您是一位充滿戲劇張力的臺灣繁體中文 RPG 對戰旁白，熟悉 Twitch 文化與 Emoji。
+每次將收到兩名玩家的角色狀態 (`duel_info`)。
 請依下列規則產出 **唯一且有效的 JSON**：
-1. `winner`：請填寫獲勝者的「玩家名稱」字串，不會有「平手」的狀況。勝負需綜合考量等級、職業與角色數值，但必須保有隨機性；同樣輸入需要不同結果。  
-2. `battle_log`：大約 25 個中文字以內，描述精采對戰過程；可加入 1 – 3 個 Emoji 增添情緒。內容須引用玩家職業或關鍵屬性作亮點。  
+1. `winner`：請填寫獲勝者的「玩家名稱」字串，不會有「平手」的狀況。勝負需綜合考量等級、職業與角色數值，但必須保有隨機性；同樣輸入需要不同結果。
+2. `battle_log`：大約 25 個中文字以內，描述精采對戰過程；可加入 1 – 3 個 Emoji 增添情緒。內容須引用玩家職業或關鍵屬性作亮點。
 
 # 輸入格式
 按此格式一次提供兩行：
@@ -38,7 +38,7 @@ schema = {
 }
 
 
-def pk(*args, **kwargs) -> str:
+async def pk(*args, **kwargs) -> str:
     challenger: Character = kwargs["char"]  # 說話者自己為挑戰者
     raw_tail_text: str = kwargs.get(
         "raw_tail_text", ""
@@ -51,7 +51,7 @@ def pk(*args, **kwargs) -> str:
     if not target_display_name:
         return "⚠️ 要輸入 !pk @對方顯示名稱"
 
-    opponent = Character.find_by_name(target_display_name)
+    opponent = await Character.find_by_name(target_display_name)
     if not opponent:
         return f"⚠️ 找不到 {target_display_name} 的角色資料"
 
@@ -59,7 +59,7 @@ def pk(*args, **kwargs) -> str:
         return "⚠️ 您不能和自己 PK"
 
     duel_info = "\n".join([format_for_duel(challenger), format_for_duel(opponent)])
-    result = get_duel_result(duel_info)
+    result = await get_duel_result(duel_info)
     logger.info(f"對戰資訊:\n{duel_info}\n對戰結果: {result}")
     return result
 
@@ -72,36 +72,26 @@ def format_for_duel(char: Character) -> str:
     )
 
 
-def get_duel_result(duel_info: str) -> str:
-    content_json = openai_client.structured_output(system_prompt, duel_info, schema)
+async def get_duel_result(duel_info: str) -> str:
+    content_json = await openai_client.structured_output(
+        system_prompt, duel_info, schema
+    )
     winner = content_json.get("winner")
     battle_log = content_json.get("battle_log")
     return f"{battle_log} 勝利者為: @{winner}"
 
 
 if __name__ == "__main__":
-    challenger = Character.find_by_name("老虎喵喵喵")
-    opponent = Character.find_by_name("drowsy5566")
-    if opponent.user_id == challenger.user_id:
-        print("⚠️ 您不能和自己 PK")
-    duel_info = "\n".join([format_for_duel(challenger), format_for_duel(opponent)])
-    result = get_duel_result(duel_info)
-    logger.info(f"對戰資訊:\n{duel_info}\n對戰結果: {result}")
+    import asyncio
 
-#     user_test_input = [
-#         """
-# 肯尼 | Lv. 10 | 職業【弓箭手】| STR 1 / AGI 10 / VIT 1 / INT 1 / DEX 1 / LUK 1
-# 張安 | Lv. 10 | 職業【盜賊】| STR 1 / AGI 1 / VIT 1 / INT 1 / DEX 10 / LUK 1""",
-#         """
-# 暗箭 | Lv. 20 | 職業【魔法師】| STR 1 / AGI 1 / VIT 20 / INT 1 / DEX 1 / LUK 1
-# Yr | Lv. 20 | 職業【忍者】| STR 1 / AGI 1 / VIT 1 / INT 20 / DEX 1 / LUK 1""",
-#         """
-# 廷哥 | Lv. 30 | 職業【武道家】| STR 1 / AGI 1 / VIT 1 / INT 1 / DEX 1 / LUK 30
-# Karry | Lv. 30 | 職業【祭司】| STR 30 / AGI 1 / VIT 1 / INT 1 / DEX 1 / LUK 1""",
-#     ]
-#     for duel_info in user_test_input:
-#         try:
-#             result = get_duel_result(duel_info)
-#             print(f"\nInput:{duel_info}\n\nOutput:\n{result}\n")
-#         except Exception as e:
-#             print(f"處理輸入時發生錯誤: {e}")
+    async def _demo():
+        challenger = await Character.find_by_name("老虎喵喵喵")
+        opponent = await Character.find_by_name("drowsy5566")
+        if opponent.user_id == challenger.user_id:
+            print("⚠️ 您不能和自己 PK")
+            return
+        duel_info = "\n".join([format_for_duel(challenger), format_for_duel(opponent)])
+        result = await get_duel_result(duel_info)
+        logger.info(f"對戰資訊:\n{duel_info}\n對戰結果: {result}")
+
+    asyncio.run(_demo())

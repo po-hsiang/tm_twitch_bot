@@ -13,8 +13,8 @@ def _format_rank_list(rank_data: list[dict], mode: str) -> str:
     return " / ".join(parts) if parts else "目前沒有資料…"
 
 
-def top_heroes(*args, **kwargs) -> str:
-    docs = mongo_atlas_client.find(
+async def top_heroes(*args, **kwargs) -> str:
+    docs = await mongo_atlas_client.find(
         "tm_twitch_users",
         filter={"user_id": {"$ne": config["tigermeowtw_id"]}},
         projection={"_id": 0, "display_names": 1, "level": 1, "exp": 1, "job": 1},
@@ -24,8 +24,8 @@ def top_heroes(*args, **kwargs) -> str:
     return _format_rank_list(docs, "hero")
 
 
-def top_richest(*args, **kwargs) -> str:
-    docs = mongo_atlas_client.find(
+async def top_richest(*args, **kwargs) -> str:
+    docs = await mongo_atlas_client.find(
         "tm_twitch_users",
         filter={"user_id": {"$ne": config["tigermeowtw_id"]}},
         projection={"_id": 0, "display_names": 1, "gold": 1},
@@ -36,5 +36,10 @@ def top_richest(*args, **kwargs) -> str:
 
 
 if __name__ == "__main__":
-    print(top_heroes())
-    print(top_richest())
+    import asyncio
+
+    async def _demo():
+        print(await top_heroes())
+        print(await top_richest())
+
+    asyncio.run(_demo())

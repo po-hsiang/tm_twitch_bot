@@ -1,6 +1,7 @@
 from tm_twitch_bot.svc_client.mongo_atlas import mongo_atlas_client
 from tm_twitch_bot.svc_client.openai import openai_client
 from tm_twitch_bot.utils.log_utils import logger
+from typing import Optional
 import threading
 
 
@@ -21,10 +22,15 @@ class GptChatSession(metaclass=_SingletonMeta):
         self.session_col = "gpt_chat_sessions"
         self.session_id = "tm_twitch"
         self.token_threshold = 4096
-        self.messages: list[dict[str, str]] = self._load_history()
+        # 惰性載入：第一次 ask 時才讀 DB（過去在 import 階段讀，服務沒開 Bot 會直接掛）
+        self.messages: Optional[list[dict[str, str]]] = None
 
-    def _load_history(self) -> list[dict[str, str]]:
-        doc = mongo_atlas_client.find(
+    async def _ensure_history(self) -> None:
+        if self.messages is None:
+            self.messages = await self._load_history()
+
+    async def _load_history(self) -> list[dict[str, str]]:
+        doc = await mongo_atlas_client.find(
             self.session_col,
             filter={"session_id": self.session_id},
             projection={"_id": 0, "messages": 1},
@@ -49,13 +55,13 @@ class GptChatSession(metaclass=_SingletonMeta):
 # 接下來妳會收到觀眾在聊天室的問題，請照上述需求來回覆
 """
         init_msg = [{"role": "system", "content": system_prompt}]
-        mongo_atlas_client.insert_one(
+        await mongo_atlas_client.insert_one(
             self.session_col, {"session_id": self.session_id, "messages": init_msg}
         )
         return init_msg
 
-    def _persist_history(self) -> None:
-        mongo_atlas_client.update(
+    async def _persist_history(self) -> None:
+        await mongo_atlas_client.update(
             self.session_col,
             update={"$set": {"messages": self.messages}},
             filter={"session_id": self.session_id},
@@ -63,12 +69,14 @@ class GptChatSession(metaclass=_SingletonMeta):
             many=False,
         )
 
-    def ask(self, question: str) -> str:
+    async def ask(self, question: str) -> str:
         if not question:
             return "!gpt 請於空格後加上您的問題"
 
+        await self._ensure_history()
+
         self.messages.append({"role": "user", "content": question})
-        raw_data = openai_client.conversation(self.messages)
+        raw_data = await openai_client.conversation(self.messages)
 
         message = raw_data["choices"][0]["message"]
         self.messages.append(message)
@@ -77,7 +85,7 @@ class GptChatSession(metaclass=_SingletonMeta):
         if total_tokens > self.token_threshold:
             self._pop_oldest_pair()
 
-        self._persist_history()
+        await self._persist_history()
         return message["content"]
 
     def _pop_oldest_pair(self) -> None:
@@ -92,14 +100,19 @@ class GptChatSession(metaclass=_SingletonMeta):
 gpt_chat_session = GptChatSession()
 
 
-def ask(*args, **kwargs) -> str:
+async def ask(*args, **kwargs) -> str:
     question = kwargs.get("raw_tail_text", "")
-    return gpt_chat_session.ask(question)
+    return await gpt_chat_session.ask(question)
 
 
 if __name__ == "__main__":
-    while True:
-        q = input("你: ")
-        if not q.strip():
-            break
-        print(f"AI: {gpt_chat_session.ask(q)}\n")
+    import asyncio
+
+    async def _demo():
+        while True:
+            q = input("你: ")
+            if not q.strip():
+                break
+            print(f"AI: {await gpt_chat_session.ask(q)}\n")
+
+    asyncio.run(_demo())

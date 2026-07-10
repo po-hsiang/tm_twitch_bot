@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from dataclasses import dataclass
 from typing import Optional
 import threading
+import asyncio
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,7 @@ class VipSystem(metaclass=_SingletonMeta):
     def __init__(self):
         self.vips_col_name = "tm_twitch_vips"
         self.cfg = _load_vip_config()
-        self._redeem_lock = threading.Lock()
+        self._redeem_lock = asyncio.Lock()  # 全程式跑在單一事件圈上，改用 asyncio.Lock
 
     def set_api_context(self, client_id: str, broadcaster_id: str, token_getter):
         self._client_id = client_id
@@ -54,14 +55,14 @@ class VipSystem(metaclass=_SingletonMeta):
     def _today_iso() -> str:
         return date.today().isoformat()
 
-    def _get_vip_doc(self, user_id: str) -> Optional[dict]:
-        docs = mongo_atlas_client.find(
+    async def _get_vip_doc(self, user_id: str) -> Optional[dict]:
+        docs = await mongo_atlas_client.find(
             self.vips_col_name, filter={"user_id": user_id}, limit=1
         )
         return docs[0] if docs else None
 
-    def _active_vip_count(self) -> int:
-        docs = mongo_atlas_client.find(
+    async def _active_vip_count(self) -> int:
+        docs = await mongo_atlas_client.find(
             self.vips_col_name,
             filter={"active": True, "expire_date": {"$gte": self._today_iso()}},
             projection={"_id": 1},
@@ -69,7 +70,7 @@ class VipSystem(metaclass=_SingletonMeta):
         )
         return len(docs or [])
 
-    def redeem_vip(self, char: Character) -> str:
+    async def redeem_vip(self, char: Character) -> str:
 
         if not self.cfg.enabled:
             return "⚠️ VIP 兌換功能未啟用。"
@@ -78,9 +79,9 @@ class VipSystem(metaclass=_SingletonMeta):
         display_name = getattr(char, "display_names")[-1]
         username = getattr(char, "usernames")[-1]
 
-        with self._redeem_lock:
+        async with self._redeem_lock:
             today_iso = self._today_iso()
-            vip_doc = self._get_vip_doc(user_id)
+            vip_doc = await self._get_vip_doc(user_id)
 
             if (
                 vip_doc
@@ -90,7 +91,7 @@ class VipSystem(metaclass=_SingletonMeta):
                 return f"⚠️ 您已是 VIP，過期後才能再次兌換。過期日：{vip_doc['expire_date']}！"
 
             # 剩餘 VIP 名額檢查
-            if self._active_vip_count() >= self.cfg.vip_cap:
+            if await self._active_vip_count() >= self.cfg.vip_cap:
                 return f"⚠️ VIP 名額已滿，上限：{self.cfg.vip_cap}。"
 
             # 金幣檢查
@@ -106,18 +107,18 @@ class VipSystem(metaclass=_SingletonMeta):
 
             # 透過 API 設定 VIP
             token = self._token_getter()
-            is_success, api_result = twitch_vips_api.add_channel_vip(
+            is_success, api_result = await twitch_vips_api.add_channel_vip(
                 token, self._client_id, self._broadcaster_id, user_id
             )
             if not is_success:  # 新增失敗
-                return f"VIP 新增失敗，原因為 {api_result.get("message")}"
+                return f"VIP 新增失敗，原因為 {api_result.get('message')}"
             logger.info(f"已經新增 {display_name} 的 VIP")
 
             # 新增成功，扣錢
             char.gold -= cost
 
             # 更新 tm_twitch_vips 表
-            mongo_atlas_client.update(
+            await mongo_atlas_client.update(
                 self.vips_col_name,
                 update={
                     "$set": {
@@ -146,14 +147,15 @@ class VipSystem(metaclass=_SingletonMeta):
             success_msg = f"🎊 VIP 兌換成功！原 {current_gold} Gold，兌換後 {current_gold - cost}。過期日：{expire_iso}！"
             return success_msg
 
-    def sweep_expired(self):
+    async def sweep_expired(self):
 
         if not self.cfg.enabled:
             logger.warning("VIP 兌換功能未啟用，略過過期掃描")
+            return  # Bug fix：過去缺少 return，功能停用時仍會執行掃描
 
         today = self._today_iso()
         expired_docs = (
-            mongo_atlas_client.find(
+            await mongo_atlas_client.find(
                 self.vips_col_name,
                 filter={"active": True, "expire_date": {"$lt": today}},
                 projection={
@@ -173,14 +175,14 @@ class VipSystem(metaclass=_SingletonMeta):
             user_id = doc.get("user_id")
             display_name = doc.get("display_name")
             token = self._token_getter()
-            is_success, api_result = twitch_vips_api.remove_channel_vip(
+            is_success, api_result = await twitch_vips_api.remove_channel_vip(
                 token, self._client_id, self._broadcaster_id, user_id
             )
             if not is_success:  # 設定失敗
-                logger.error(f"VIP 移除失敗，原因為 {api_result.get("message")}")
+                logger.error(f"VIP 移除失敗，原因為 {api_result.get('message')}")
             logger.info(f"已經移除 {display_name} 的 VIP")
 
-            mongo_atlas_client.update(
+            await mongo_atlas_client.update(
                 self.vips_col_name,
                 update={
                     "$set": {
@@ -204,9 +206,9 @@ class VipSystem(metaclass=_SingletonMeta):
 vip_system = VipSystem()
 
 
-def redeem(*args, **kwargs):
+async def redeem(*args, **kwargs):
     char = kwargs.get("char")
-    return vip_system.redeem_vip(char)
+    return await vip_system.redeem_vip(char)
 
 
 if __name__ == "__main__":

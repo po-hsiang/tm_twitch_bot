@@ -1,0 +1,31 @@
+is_test: false
+tigermeowtw_id: '35949794'
+admin_user_id:
+- '35949794'
+bot_user_id:
+- '696282367'
+- '100135110'
+rpg_parameter:
+  default_gained_exp: 1
+  default_gainer_gold: 1
+  exp_req_multiple: 10
+# 機敏資訊（token / client_secret / api_key）一律放在專案根目錄的 .env，不放這裡
+twitch:
+  channel: tigermeowtw
+  redirect_uri: https://welcome-my-jellyfin.pohsiangjuan.com/callback
+google_sheets:
+  svc_url: http://localhost:9091
+  sheet_url: https://docs.google.com/spreadsheets/d/1-UQ7KBWK09ZCHZKFycymk04BaB5oW6DJ0vi2N7x6qQE/edit?usp=sharing
+openai:
+  svc_url: http://localhost:9092
+  model: gpt-5-nano
+mongodb_atlas:
+  svc_url: http://localhost:9093
+youtube:
+  svc_url: http://localhost:9094
+  tm_playlist_id: PLLUffVVIYEV8J2P4Tp-rkEYZEtMHHkm7o
+vip_system:
+  enabled: true
+  gold_cost: 100
+  vip_cap: 51
+  days_per_redeem: 31

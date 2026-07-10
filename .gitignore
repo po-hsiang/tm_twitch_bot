@@ -8,8 +8,8 @@ __pycache__/
 venv/
 
 # ===== 機敏資訊（絕不進版控）=====
+# config_common.yaml 已去機敏化（憑證全在 .env），故可入版控
 .env
-src/tm_twitch_bot/config/config_common.yaml
 
 # ===== IDE / 系統 =====
 .idea/

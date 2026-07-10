@@ -12,14 +12,15 @@ from twitchio.ext import commands
 from tm_twitch_bot.scripts.message_controller import handle_message
 from tm_twitch_bot.scripts.task_scheduler import schedule_task
 from tm_twitch_bot.scripts.vip_system import vip_system
-from tm_twitch_bot.utils.yaml_utils import config, save_tokens
-from tm_twitch_bot.utils.dump_obj_utils import dump_obj
+from tm_twitch_bot.scripts import command_dispatcher
+from tm_twitch_bot.scripts import level_and_job_system
+from tm_twitch_bot.utils.token_manager import token_manager
+from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
 from typing import Tuple
 import platform
 import asyncio
 import httpx
-import sys
 
 
 if platform.system() == "Windows":
@@ -27,15 +28,13 @@ if platform.system() == "Windows":
 
 
 twitch_config = config["twitch"]
-ACCESS = twitch_config["access_token"]
-REFRESH = twitch_config["refresh_token"]
 CID = twitch_config["client_id"]
 CSECRET = twitch_config["client_secret"]
 CHANNEL = twitch_config["channel"]
 
 
 # ---------- 工具 ----------
-async def validate(token: str) -> str:
+async def validate(token: str) -> Tuple[bool, str]:
     async with httpx.AsyncClient() as cli:
         resp = await cli.get(
             "https://id.twitch.tv/oauth2/validate",
@@ -51,15 +50,16 @@ async def validate(token: str) -> str:
 TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 
 
-def refresh_access_token() -> Tuple[str, str]:
+async def refresh_access_token() -> Tuple[str, str]:
     """用 refresh_token 換新 access/refresh；失敗拋例外。"""
     payload = {
         "client_id": CID,
         "client_secret": CSECRET,
         "grant_type": "refresh_token",
-        "refresh_token": REFRESH,
+        "refresh_token": token_manager.refresh_token,
     }
-    r = httpx.post(TOKEN_URL, params=payload, timeout=10)
+    async with httpx.AsyncClient(timeout=10) as cli:
+        r = await cli.post(TOKEN_URL, params=payload)
     r.raise_for_status()
     j = r.json()
     return j["access_token"], j["refresh_token"]
@@ -70,7 +70,9 @@ class MyBot(commands.Bot):
 
     def __init__(self, twitch: Twitch):
         super().__init__(
-            token=f"oauth:{ACCESS}", prefix="!", initial_channels=[CHANNEL]
+            token=f"oauth:{token_manager.access_token}",
+            prefix="!",
+            initial_channels=[CHANNEL],
         )
         self.twitch = twitch
         self.channel = None
@@ -84,7 +86,7 @@ class MyBot(commands.Bot):
 
         # 2) 建立 WebSocket，先 start 再 listen
         ws = EventSubWebsocket(self.twitch)
-        ws.start()  # 先建立 session :contentReference[oaicite:3]{index=3}
+        ws.start()  # 先建立 session
         await ws.listen_channel_points_custom_reward_redemption_add(
             user.id, self.on_points
         )  # 再訂閱並帶 callback
@@ -95,9 +97,9 @@ class MyBot(commands.Bot):
         vip_system.set_api_context(
             client_id=CID,
             broadcaster_id=user.id,
-            token_getter=lambda: ACCESS,  # 你刷新 ACCESS 後，lambda 取到的就是最新 token
+            token_getter=token_manager.get_access,  # 永遠取得最新 token（含自動刷新後）
         )
-        vip_system.sweep_expired()
+        await vip_system.sweep_expired()
 
         if not config["is_test"]:
             await self.channel.send(f"Bot 已上線 tigerm24ThruFast ")
@@ -125,14 +127,8 @@ class MyBot(commands.Bot):
 
     async def on_points(self, subscription_and_event):
         # TODO 目前有其他人兌換而收不到事件的 Bug
-        # logger.info(f"tpye(subscription_and_event): {type(subscription_and_event)}")
-        # logger.info(f"to_dict(): {subscription_and_event.to_dict()}")
-
         event = subscription_and_event.event
-        user_id = event.user_id
-        user_login = event.user_login
         user_name = event.user_name
-        user_input = event.user_input
 
         reward = event.reward
 
@@ -145,26 +141,22 @@ class MyBot(commands.Bot):
 
 # ---------- 主協程 ----------
 async def main():
-    global ACCESS, REFRESH  # 若刷新需更新全域
-
-    ok, cid_in_token = await validate(ACCESS)
+    ok, cid_in_token = await validate(token_manager.access_token)
     if not ok or cid_in_token != CID:
         logger.warning("Access-Token 失效或非本 App，嘗試以 refresh_token 更新……")
         try:
-            ACCESS, REFRESH = refresh_access_token()
-            save_tokens(ACCESS, REFRESH)  # 寫回 YAML 或檔案
-            logger.info(
-                "🔄  取得新 access_token，剩餘 %s 秒過期",
-                twitch_config.get("expires_in", "240*60"),
-            )
+            access_token, refresh_token = await refresh_access_token()
+            token_manager.update(access_token, refresh_token)  # 更新記憶體並寫回 .env
+            logger.info("🔄  取得新 access_token")
         except Exception as e:
             logger.error("自動刷新失敗：%s", e)
             raise RuntimeError("無法刷新 token，請重新授權") from e
 
     twitch = await Twitch(CID, CSECRET, authenticate_app=False)
-    twitch.user_auth_refresh_callback = save_tokens
+    # twitchAPI 自動刷新後會 await 這個 callback，token_manager 同步更新記憶體與 .env
+    twitch.user_auth_refresh_callback = token_manager.on_refresh
     await twitch.set_user_authentication(
-        ACCESS,
+        token_manager.access_token,
         [
             AuthScope.CHAT_READ,
             AuthScope.CHAT_EDIT,
@@ -172,9 +164,13 @@ async def main():
             AuthScope.CHANNEL_MANAGE_VIPS,
             AuthScope.CHANNEL_READ_VIPS,
         ],
-        refresh_token=REFRESH,
+        refresh_token=token_manager.refresh_token,
     )
     logger.info("Twitch 物件建立完成")
+
+    # === Bootstrap：啟動時載入 Google Sheets 設定（過去在 import 階段執行）===
+    await command_dispatcher.load_command_set()
+    await level_and_job_system.load_job_config()
 
     try:
         bot = MyBot(twitch)
@@ -184,7 +180,6 @@ async def main():
     finally:
         logger.warning(f"Bot finally 結束")
         sys.exit()
-    sys.exit()
 
 
 if __name__ == "__main__":
@@ -197,4 +192,3 @@ if __name__ == "__main__":
     finally:
         logger.warning(f"主程式 finally 結束")
         sys.exit()
-    sys.exit()

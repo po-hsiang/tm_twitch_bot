@@ -1,7 +1,9 @@
 from tm_twitch_bot.svc_client.google_sheets import google_sheets_client
+from tm_twitch_bot.utils.log_utils import logger
 
-
-RAW_JOB_DATA = google_sheets_client.get_sheet_data("轉職表")
+# 啟動 bootstrap 時由 load_job_config() 填入（過去在 import 階段抓表）
+# 注意：只做 in-place 更新，讓其他模組 `from ... import JOB_CONFIG` 的引用永遠有效
+JOB_CONFIG: dict[int, dict] = {}
 
 
 def parse_jobs_sheet(raw_data: list[list[str]]) -> dict[int, dict]:
@@ -23,37 +25,18 @@ def parse_jobs_sheet(raw_data: list[list[str]]) -> dict[int, dict]:
     return job_config
 
 
-JOB_CONFIG = parse_jobs_sheet(RAW_JOB_DATA)
-
-
-# def experience_to_next_level(level: int) -> int:
-#     return level * 10
-
-
-# def calculate_level_and_exp(
-#     current_level: int, current_exp: int, gained_exp: int
-# ) -> tuple[int, int]:
-
-#     total_exp = current_exp + gained_exp
-#     level = current_level
-
-#     while total_exp >= experience_to_next_level(level):
-#         total_exp -= experience_to_next_level(level)
-#         level += 1
-
-#     return level, total_exp
+async def load_job_config() -> None:
+    raw_data = await google_sheets_client.get_sheet_data("轉職表")
+    JOB_CONFIG.clear()
+    JOB_CONFIG.update(parse_jobs_sheet(raw_data))
+    logger.info(f"轉職表載入完成，門檻等級: {list(JOB_CONFIG.keys())}")
 
 
 if __name__ == "__main__":
-    # test_inputs = [(1, 0, 1), (1, 9, 1), (1, 0, 10), (1, 5, 10), (3, 25, 7)]
+    import asyncio
 
-    # for current_level, current_exp, gained_exp in test_inputs:
-    #     print(
-    #         f"\n\nTesting with Current Level: {current_level}, Current EXP: {current_exp}, Gained EXP: {gained_exp}"
-    #     )
-    #     new_level, remaining_exp = calculate_level_and_exp(
-    #         current_level, current_exp, gained_exp
-    #     )
-    #     print(f"New Level: {new_level}, Remaining EXP: {remaining_exp}")
-    print(f"RAW_JOB_DATA: {RAW_JOB_DATA}")
-    print(f"JOB_CONFIG: {JOB_CONFIG}")
+    async def _demo():
+        await load_job_config()
+        print(f"JOB_CONFIG: {JOB_CONFIG}")
+
+    asyncio.run(_demo())

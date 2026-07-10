@@ -56,7 +56,7 @@ class Character:
         return datetime.now(timezone(timedelta(hours=8))).isoformat()
 
     @classmethod
-    def load_or_create(
+    async def load_or_create(
         cls, user_id: str, username: str, display_name: str
     ) -> "Character":
         """
@@ -65,7 +65,7 @@ class Character:
         """
 
         # 先找找看, 存在就轉為物件並補最新 username, display_name
-        doc = mongo_atlas_client.find(
+        doc = await mongo_atlas_client.find(
             "tm_twitch_users", filter={"user_id": user_id}, limit=1
         )
         if doc:
@@ -79,15 +79,15 @@ class Character:
 
         now = datetime.now(timezone(timedelta(hours=8))).isoformat()
         doc.update({"created_at": now, "updated_at": now})
-        mongo_atlas_client.insert_one("tm_twitch_users", doc)
+        await mongo_atlas_client.insert_one("tm_twitch_users", doc)
         return char
 
     @classmethod
-    def find_by_user_id(cls, user_id: str) -> "Character":
+    async def find_by_user_id(cls, user_id: str) -> "Character | None":
         """
         透過 user_id 讀取角色資料
         """
-        doc = mongo_atlas_client.find(
+        doc = await mongo_atlas_client.find(
             "tm_twitch_users", filter={"user_id": user_id}, limit=1
         )
         if doc:
@@ -95,7 +95,7 @@ class Character:
         return None
 
     @classmethod
-    def find_by_name(cls, name: str) -> "Character | None":
+    async def find_by_name(cls, name: str) -> "Character | None":
         if not name:
             return None
 
@@ -106,7 +106,7 @@ class Character:
             "display_names": {"$regex": f"^{name}$", "$options": "i"}
         }
 
-        doc = mongo_atlas_client.find(
+        doc = await mongo_atlas_client.find(
             "tm_twitch_users",
             filter=regex_filter,
             limit=1,  # 只要第一筆，理論上名稱應唯一
@@ -117,7 +117,7 @@ class Character:
                 # 再比對 usernames 看看
                 "usernames": {"$regex": f"^{name}$", "$options": "i"}
             }
-            doc = mongo_atlas_client.find(
+            doc = await mongo_atlas_client.find(
                 "tm_twitch_users",
                 filter=username_filter,
                 limit=1,
@@ -128,8 +128,8 @@ class Character:
         return None
 
     @classmethod
-    def get_tigermeow_char(cls) -> "Character":
-        return mongo_atlas_client.find(
+    async def get_tigermeow_char(cls) -> "Character":
+        return await mongo_atlas_client.find(
             "tm_twitch_users", filter={"user_id": config["tigermeowtw_id"]}, limit=1
         )
 
@@ -139,8 +139,8 @@ class Character:
         if display_name and display_name not in self.display_names:
             self.display_names.append(display_name)
 
-    def save(self):
-        mongo_atlas_client.update(
+    async def save(self):
+        await mongo_atlas_client.update(
             "tm_twitch_users",
             update={
                 "$set": {
@@ -213,10 +213,12 @@ def check(*args, **kwargs):
 
 
 if __name__ == "__main__":
-    char = Character.load_or_create("35949794", "tigermeowtw", "老虎喵喵喵")
-    logger.info(f"{Character.find_by_user_id("35949794")}")
-    logger.info(f"{Character.find_by_name("老虎喵喵喵")}")
-    logger.info(f"{Character.find_by_name("tigermeowtw")}")
-    # logger.info(char.get_info())
-    # char.gain_exp(237)
-    # logger.info(char.get_info())
+    import asyncio
+
+    async def _demo():
+        char = await Character.load_or_create("35949794", "tigermeowtw", "老虎喵喵喵")
+        logger.info(f"{await Character.find_by_user_id('35949794')}")
+        logger.info(f"{await Character.find_by_name('老虎喵喵喵')}")
+        logger.info(f"{char.get_info()}")
+
+    asyncio.run(_demo())

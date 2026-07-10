@@ -96,12 +96,14 @@
 
 ```
 tm_twitch_bot/
-├── pyproject.toml              # Poetry 專案定義（Python >= 3.13）
-├── poetry.lock
+├── pyproject.toml              # 專案定義（uv 管理，Python >= 3.13）
+├── uv.lock
+├── .env                        # 機敏資訊（token / secret / api key），不進版控
+├── .env.example                # .env 範本
 ├── src/tm_twitch_bot/
-│   ├── main.py                 # 進入點：Token 驗證/刷新、Bot 啟動、事件註冊
+│   ├── main.py                 # 進入點：Token 驗證/刷新、bootstrap、Bot 啟動
 │   ├── config/
-│   │   └── config_common.yaml  # 全域設定（Twitch 憑證、各服務 URL、遊戲參數）
+│   │   └── config_common.yaml  # 非機敏設定（各服務 URL、遊戲參數）
 │   ├── oauth/
 │   │   └── server.py           # FastAPI OAuth callback（首次授權用）
 │   ├── scripts/                # 核心業務邏輯
@@ -130,8 +132,9 @@ tm_twitch_bot/
 │   │   ├── youtube.py
 │   │   └── twitch_vips_api.py      # 直接呼叫 Twitch Helix VIP API
 │   └── utils/
-│       ├── yaml_utils.py           # 設定載入 / Token 寫回
-│       ├── http_utils.py           # 帶重試的 HTTP 請求
+│       ├── yaml_utils.py           # 設定載入（YAML + .env 合併）
+│       ├── token_manager.py        # Token 唯一來源（刷新後同步記憶體與 .env）
+│       ├── http_utils.py           # 帶重試的非同步 HTTP 請求（httpx.AsyncClient）
 │       ├── log_utils.py            # 彩色 Logger
 │       ├── probability_utils.py    # 加權隨機
 │       └── ...
@@ -196,7 +199,7 @@ tm_twitch_bot/
 
 ### 前置需求
 
-1. **Python 3.13+** 與 **Poetry 2.x**
+1. **Python 3.13+** 與 **[uv](https://docs.astral.sh/uv/)**
 2. **四個本地微服務**已啟動（不在本 repo 內）：
    - Google Sheets 服務 → `localhost:9091`
    - OpenAI 服務 → `localhost:9092`
@@ -207,7 +210,15 @@ tm_twitch_bot/
 ### 安裝
 
 ```bash
-poetry install
+uv sync
+```
+
+### 設定機敏資訊
+
+複製 `.env.example` 為 `.env`，填入 Twitch 憑證與 OpenAI API Key：
+
+```bash
+cp .env.example .env
 ```
 
 ### 首次取得 Token
@@ -215,18 +226,18 @@ poetry install
 1. 啟動 OAuth callback 伺服器：
 
    ```bash
-   poetry run python src/tm_twitch_bot/oauth/server.py
+   uv run python src/tm_twitch_bot/oauth/server.py
    ```
 
-2. 於瀏覽器開啟授權網址（scope 需含 `chat:read chat:edit channel:read:redemptions channel:read:vips channel:manage:vips`），完成授權後從 callback 回應取得 `access_token` 與 `refresh_token`，填入 `config_common.yaml`。
+2. 於瀏覽器開啟授權網址（scope 需含 `chat:read chat:edit channel:read:redemptions channel:read:vips channel:manage:vips`），完成授權後從 callback 回應取得 `access_token` 與 `refresh_token`，填入 `.env`。
 
 ### 啟動 Bot
 
 ```bash
-poetry run python src/tm_twitch_bot/main.py
+uv run python src/tm_twitch_bot/main.py
 ```
 
-啟動流程：驗證 access token（失效時自動以 refresh token 換新並寫回設定檔）→ 建立 Twitch 物件 → 連線聊天室 → 訂閱忠誠點數 EventSub → 啟動排程任務。
+啟動流程：驗證 access token（失效時自動以 refresh token 換新並寫回 `.env`）→ 建立 Twitch 物件 → bootstrap 載入指令集與轉職表 → 連線聊天室 → 訂閱忠誠點數 EventSub → 啟動排程任務。
 
 ### 測試模式
 
@@ -236,28 +247,38 @@ poetry run python src/tm_twitch_bot/main.py
 
 ## 設定檔說明
 
-`src/tm_twitch_bot/config/config_common.yaml`（敏感值以 `***` 表示）：
+設定分成兩層：
+
+### `.env`（機敏資訊，已列入 .gitignore）
+
+```env
+TWITCH_CLIENT_ID=...
+TWITCH_CLIENT_SECRET=...
+TWITCH_ACCESS_TOKEN=...
+TWITCH_REFRESH_TOKEN=...
+OPENAI_API_KEY=...
+```
+
+Token 由 `utils/token_manager.py` 集中管理：無論啟動時手動刷新或 twitchAPI 執行期自動刷新，都會同步更新記憶體並寫回 `.env`。
+
+### `src/tm_twitch_bot/config/config_common.yaml`（非機敏設定，可入版控）
 
 ```yaml
 is_test: false                # 測試模式開關
-tigermeowtw_id: '***'         # 頻道主 user_id
-admin_user_id: ['***']        # 管理員清單（可開遊戲）
-bot_user_id: ['***']          # 機器人帳號（訊息忽略）
+tigermeowtw_id: '...'         # 頻道主 user_id
+admin_user_id: ['...']        # 管理員清單（可開遊戲）
+bot_user_id: ['...']          # 機器人帳號（訊息忽略）
 rpg_parameter:
   default_gained_exp: 1       # 每句話經驗
   default_gainer_gold: 1      # 每句話金幣
   exp_req_multiple: 10        # 升級所需經驗 = 等級 × 此值
 twitch:
-  access_token: '***'
-  refresh_token: '***'
-  client_id: '***'
-  client_secret: '***'
   channel: tigermeowtw
   redirect_uri: https://***/callback
-google_sheets: { svc_url: 'http://localhost:9091', sheet_url: '***' }
-openai:        { svc_url: 'http://localhost:9092', api_key: '***', model: gpt-5-nano }
+google_sheets: { svc_url: 'http://localhost:9091', sheet_url: '...' }
+openai:        { svc_url: 'http://localhost:9092', model: gpt-5-nano }
 mongodb_atlas: { svc_url: 'http://localhost:9093' }
-youtube:       { svc_url: 'http://localhost:9094', tm_playlist_id: '***' }
+youtube:       { svc_url: 'http://localhost:9094', tm_playlist_id: '...' }
 vip_system:
   enabled: true
   gold_cost: 100              # 兌換價格
@@ -265,7 +286,7 @@ vip_system:
   days_per_redeem: 31         # 每次兌換天數
 ```
 
-> ⚠️ **安全提醒**：此檔目前直接存放 access token、client secret 與 OpenAI API key 等明文機密。強烈建議改用環境變數或密鑰管理服務，並確保此檔不進入版本控制（見[注意事項](#注意事項)）。
+程式載入時（`utils/yaml_utils.py`）會把 `.env` 的機敏值合併進 config dict，既有的 `config["twitch"]["access_token"]` 取用方式不變。
 
 ---
 
@@ -283,8 +304,9 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 
 ## 注意事項
 
-- **機密管理**：`config_common.yaml` 內含明文憑證，請勿公開此檔或將其納入版本控制；外洩時請立即輪替（Twitch Client Secret、OpenAI API Key）。
-- **啟動順序**：Bot 在模組載入階段就會呼叫 Google Sheets / YouTube 等服務拉取設定，因此**四個微服務必須先於 Bot 啟動**，否則 import 階段即失敗。
+- **機密管理**：所有憑證存於 `.env`（已列入 `.gitignore`）。請勿把 `.env` 分享給任何人；懷疑外洩時請立即輪替 Twitch Client Secret 與 OpenAI API Key。
+- **啟動順序**：Google Sheets 的指令集與轉職表在 Bot 啟動的 bootstrap 階段載入（其餘資料為首次使用時惰性載入），因此**啟動 Bot 時微服務需在線**；單純 import 模組（開發、測試）則不需要。
+- **非同步 HTTP**：所有對微服務與 Twitch Helix 的請求都走共用的 `httpx.AsyncClient`，重試等待不會阻塞事件圈。
 - **指令集熱更新限制**：指令集於啟動時載入一次，修改試算表後需重啟 Bot 才會生效。
 - **已知問題**：忠誠點數兌換事件偶爾收不到其他使用者的兌換通知（見 `main.py` 中 `on_points` 的 TODO）。
 - `tests/` 目前為空，尚未建立自動化測試。

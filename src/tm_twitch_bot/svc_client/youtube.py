@@ -2,7 +2,6 @@ from tm_twitch_bot.utils.http_utils import request_with_retries
 from tm_twitch_bot.utils.yaml_utils import config
 from typing import Any
 import threading
-import requests
 import random
 
 yt_cofig = config["youtube"]
@@ -25,38 +24,37 @@ class YouTubeClient(metaclass=_SingletonMeta):
         self.base_url = yt_cofig["svc_url"]
         self.tm_playlist_id = yt_cofig["tm_playlist_id"]
         self._cache: dict[str, list[dict[str, Any]]] = {}
-        self.fetch_playlist()  # 啟動服務時先跑一次
 
     # ---------- 基礎呼叫 ---------- #
-    def _get(self, path: str, params: dict) -> dict:
+    async def _get(self, path: str, params: dict) -> dict:
         url = f"{self.base_url}{path}"
-        resp = request_with_retries(requests.get, url, params=params)
-        resp.raise_for_status()
+        resp = await request_with_retries("GET", url, params=params)
         data = resp.json()  # ➟ dict / list
         return data
 
     # ---------- 公開方法 ---------- #
-    def fetch_playlist(self, sort: str = "views") -> list[dict[str, Any]]:
+    async def fetch_playlist(self, sort: str = "views") -> list[dict[str, Any]]:
+        # 惰性載入：第一次使用時才抓歌單（過去在 import 階段抓，服務沒開 Bot 會直接掛）
         cache_key = f"{self.tm_playlist_id}:{sort}"
         if cache_key not in self._cache:
-            data = self._get(
+            data = await self._get(
                 "/playlist", {"playlist_id": self.tm_playlist_id, "sort": sort}
             )
             self._cache[cache_key] = data
         return self._cache[cache_key]
 
-    def pick_random_song(self, sort: str = "views") -> str:
-        songs = self.fetch_playlist(sort)
+    async def pick_random_song(self, sort: str = "views") -> str:
+        songs = await self.fetch_playlist(sort)
         song = random.choice(songs)
         return f"{song['channel']} | {song['title']} | {song['url']}"
 
-    def search(self, keyword: str, sort: str = "views") -> int:
+    async def search(self, keyword: str, sort: str = "views") -> str:
         keyword = keyword.strip()
         if len(keyword) < 2:
             return "搜尋關鍵字請大於等於 2 個字元"
 
         keyword_lower = keyword.lower()
-        songs = self.fetch_playlist(sort)
+        songs = await self.fetch_playlist(sort)
         matches = [
             s
             for s in songs
@@ -74,16 +72,21 @@ class YouTubeClient(metaclass=_SingletonMeta):
 youtube_client = YouTubeClient()
 
 
-def pick(*args, **kwargs):
-    return youtube_client.pick_random_song()
+async def pick(*args, **kwargs):
+    return await youtube_client.pick_random_song()
 
 
-def search_song(*args, **kwargs):
+async def search_song(*args, **kwargs):
     keyword = kwargs.get("raw_tail_text", "")
-    return youtube_client.search(keyword)
+    return await youtube_client.search(keyword)
 
 
 if __name__ == "__main__":
-    print(youtube_client.fetch_playlist())
-    # print(youtube_client.pick_random_song())
-    # print(youtube_client.search("MJ116"))
+    import asyncio
+
+    async def _demo():
+        print(await youtube_client.fetch_playlist())
+        # print(await youtube_client.pick_random_song())
+        # print(await youtube_client.search("MJ116"))
+
+    asyncio.run(_demo())

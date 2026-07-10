@@ -68,13 +68,13 @@ class GoldRushGame(metaclass=_SingletonMeta):
             return "⚠️ 沒有人參加一桶金遊戲"
         items, weights = zip(*self._entries.items())
         user_id = weighted_random_choice(list(items), list(weights))
-        char = Character.find_by_user_id(user_id)
+        char = await Character.find_by_user_id(user_id)
         if not char:
             return "⚠️ 找不到參加者的資料，怪怪的"
         total_reward = sum(weights)
         original_gold = char.gold
         char.gold += total_reward
-        char.save()
+        await char.save()
         winner = char.display_names[-1]
         final_result = (
             f"@{winner} 🎊 恭喜您抱走一桶金 {total_reward} Gold！"

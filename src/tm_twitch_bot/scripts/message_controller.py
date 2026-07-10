@@ -14,9 +14,6 @@ _last_message: dict[str, str] = {}  # user_id -> 上一句訊息
 
 
 async def handle_message(message):
-    # msg_dict = {attr: getattr(message, attr) for attr in message.__slots__}
-    # logger.info(f"handle_message() msg_dict: {msg_dict}")
-
     author = message.author
     user_id = author.id
     username = author.name
@@ -28,12 +25,12 @@ async def handle_message(message):
         return
 
     # 取得角色 (若沒有則創角)
-    char = Character.load_or_create(
+    char = await Character.load_or_create(
         user_id=user_id, username=username, display_name=display_name
     )
 
     # 增加真實聊天次數 (不論洗不洗頻都加一)
-    add_total_msgs_count(user_id)
+    await add_total_msgs_count(user_id)
 
     # 防 3 秒內輸入
     now = monotonic()
@@ -60,16 +57,16 @@ async def handle_message(message):
     char.gain_gold(rpg_parameter["default_gainer_gold"])
 
     # 查看指令集
-    cmd_reply = dispatch_command(content, char=char, message=message)
+    cmd_reply = await dispatch_command(content, char=char, message=message)
     if cmd_reply:
         await message.channel.send(f"@{display_name} {cmd_reply}")
 
     # 存檔
-    char.save()
+    await char.save()
 
 
-def add_total_msgs_count(user_id):
-    mongo_atlas_client.update(
+async def add_total_msgs_count(user_id):
+    await mongo_atlas_client.update(
         "tm_twitch_users",
         update={"$inc": {"total_msgs": 1}},
         filter={"user_id": user_id},

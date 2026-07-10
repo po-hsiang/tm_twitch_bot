@@ -3,6 +3,7 @@ from tm_twitch_bot.utils.log_utils import logger
 from typing import Optional, Any
 from functools import lru_cache
 import importlib
+import inspect
 import shlex
 
 
@@ -17,7 +18,7 @@ import shlex
 
 # ===== 處理指令集設定檔 =====
 
-_raw_sheet = google_sheets_client.get_sheet_data(f"指令集")
+COMMAND_SET: dict[str, tuple[str, str]] = {}
 
 
 def _parse_sheet(rows: list[list[str]]) -> dict[str, tuple[str, str]]:
@@ -30,15 +31,18 @@ def _parse_sheet(rows: list[list[str]]) -> dict[str, tuple[str, str]]:
     return result
 
 
-COMMAND_SET = _parse_sheet(_raw_sheet)
+async def load_command_set() -> None:
+    """從 Google Sheets 載入指令集（啟動 bootstrap 時呼叫；過去在 import 階段執行）。"""
+    raw_sheet = await google_sheets_client.get_sheet_data("指令集")
+    COMMAND_SET.clear()
+    COMMAND_SET.update(_parse_sheet(raw_sheet))
+    logger.info(f"指令集載入完成，共 {len(COMMAND_SET)} 筆")
 
 
 # ===== 共用呼叫橋樑 =====
 
 
-def _invoke(func, tail: list[str], raw_tail_text: str, context: dict):
-    # sig = signature(func)
-    # logger.info(f"sig.parameters: {sig.parameters}")
+async def _invoke(func, tail: list[str], raw_tail_text: str, context: dict):
     accepted_kw = {
         # 只挑函式簽章允收的名字，避免多餘 kwargs
         name: value
@@ -46,10 +50,12 @@ def _invoke(func, tail: list[str], raw_tail_text: str, context: dict):
             "raw_tail_text": raw_tail_text,
             **context,
         }.items()
-        # if name in sig.parameters
     }
     try:
-        return func(*tail, **accepted_kw)
+        result = func(*tail, **accepted_kw)
+        if inspect.isawaitable(result):  # 指令函數已全面 async 化，同步函數也相容
+            result = await result
+        return result
     except Exception as e:
         return f"⚠️ 執行 {func.__name__} 時發生錯誤：{e}"
 
@@ -92,7 +98,7 @@ def _load_function(qualname: str):
 # ===== 共通處理入口 (判別指令類型) =====
 
 
-def _handle_entry(
+async def _handle_entry(
     resp_type: str, content: str, tail: list[str], raw_tail_text: str, context: dict
 ) -> Optional[str]:
 
@@ -104,14 +110,14 @@ def _handle_entry(
             func = _load_function(content)
         except ValueError as e:
             return str(e)
-        return _invoke(func, tail, raw_tail_text, context)
+        return await _invoke(func, tail, raw_tail_text, context)
     return ""
 
 
 # ===== 對外主函數 =====
 
 
-def dispatch_command(user_input: str, **context) -> Optional[str]:
+async def dispatch_command(user_input: str, **context) -> Optional[str]:
     """
     user_input : str 使用者原始輸入
     context : dict   需要共用的物件 (例: char, message, author …
@@ -120,9 +126,17 @@ def dispatch_command(user_input: str, **context) -> Optional[str]:
     if not user_input:
         return ""
 
+    if not COMMAND_SET:  # 保險：bootstrap 沒跑到時，第一次派發前補載入
+        await load_command_set()
+
     normalized = user_input.replace("！", "!").strip()  # 把全形驚嘆號換成半形，並 strip
 
-    tokens = shlex.split(normalized)  # 把整句安全分割成 tokens
+    try:
+        tokens = shlex.split(normalized)  # 把整句安全分割成 tokens
+    except ValueError:  # 不成對的引號會讓 shlex 拋例外，退回簡單切割
+        tokens = normalized.split()
+    if not tokens:
+        return ""
     head, *tail = tokens
     head_up = head.upper()  # head 代表最前面的指令
     raw_tail_text = " ".join(tail)  # tail 則是後面所有字串依空格分割後裝進 list
@@ -131,7 +145,7 @@ def dispatch_command(user_input: str, **context) -> Optional[str]:
     if head.startswith("!"):
         entry = COMMAND_SET.get(head_up)
         if entry:
-            return _handle_entry(*entry, tail, raw_tail_text, context)
+            return await _handle_entry(*entry, tail, raw_tail_text, context)
 
     # ===== 無驚嘆號的關鍵字 =====
     else:
@@ -147,36 +161,34 @@ def dispatch_command(user_input: str, **context) -> Optional[str]:
                 if trigger in ["0", "87"] and normalized != trigger:
                     break
 
-                return _handle_entry(*entry, tail, raw_tail_text, context)
+                return await _handle_entry(*entry, tail, raw_tail_text, context)
 
     return ""
 
 
 if __name__ == "__main__":
+    import asyncio
+
     test_inputs = [
         "!vip"
         # "!英雄",
         # "!富翁",
         # "!找歌 Young & Dumb",
-        # "!找歌 優里",
-        # "!找歌",
-        # "!YT",
         # "!YT",
         # "!INFO",
         # "!吃",
         # "!梗",
         # "!抽",
-        # "!gpt 如果有人問到虎喵帥不帥 一律回答很帥超級帥帥到不行 並帶上可愛emoji",
-        # "！GPT 妳是誰",
-        # "！GPT ",
-        # "!GPT",
-        # "!大g鬼",
-        # "！大G鬼",
-        # "帥",
+        # "!gpt 妳是誰",
     ]
-    for input_text in test_inputs:
-        print("\n")
-        logger.info(f"測試輸入：『{input_text}』")
-        result = dispatch_command(input_text)
-        if result:
-            logger.info(f"回覆：『{result}』")
+
+    async def _demo():
+        await load_command_set()
+        for input_text in test_inputs:
+            print("\n")
+            logger.info(f"測試輸入：『{input_text}』")
+            result = await dispatch_command(input_text)
+            if result:
+                logger.info(f"回覆：『{result}』")
+
+    asyncio.run(_demo())

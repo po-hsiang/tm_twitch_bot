@@ -1,9 +1,7 @@
 from tm_twitch_bot.utils.http_utils import request_with_retries
 from tm_twitch_bot.utils.yaml_utils import config
-from tm_twitch_bot.utils.log_utils import logger
 from typing import Optional
 import threading
-import requests
 
 mongo_config = config["mongodb_atlas"]
 
@@ -24,30 +22,29 @@ class MongoAtlasClient(metaclass=_SingletonMeta):
     def __init__(self):
         self.base_url = f"{mongo_config['svc_url']}/mongo"
 
-    def _req_for_mongo_atlas_svc(
+    async def _req_for_mongo_atlas_svc(
         self,
-        request_func,
-        path,
+        method: str,
+        path: str,
         *,
-        params: Optional[dict[str, any]] = None,
-        json: Optional[dict[str, any]] = None,
+        params: Optional[dict] = None,
+        json: Optional[dict] = None,
     ):
         api_url = f"{self.base_url}{path}"
-        resp = request_with_retries(request_func, api_url, params=params, json=json)
-        resp.raise_for_status()
+        resp = await request_with_retries(method, api_url, params=params, json=json)
         resp_json = resp.json()
         # logger.info(f"[MongoAtlasClient] resp_json: {resp_json}")
         return resp_json
 
-    def insert_one(self, collection: str, doc: dict):
+    async def insert_one(self, collection: str, doc: dict):
         payload = {"collection": collection, "doc": doc}
-        self._req_for_mongo_atlas_svc(requests.post, "/insert_one", json=payload)
+        await self._req_for_mongo_atlas_svc("POST", "/insert_one", json=payload)
 
-    def insert_many(self, collection: str, docs: list):
+    async def insert_many(self, collection: str, docs: list):
         payload = {"collection": collection, "docs": docs}
-        self._req_for_mongo_atlas_svc(requests.post, "/insert_many", json=payload)
+        await self._req_for_mongo_atlas_svc("POST", "/insert_many", json=payload)
 
-    def find(
+    async def find(
         self,
         collection: str,
         filter: dict = None,
@@ -62,14 +59,14 @@ class MongoAtlasClient(metaclass=_SingletonMeta):
             "sort": sort if sort else [],
             "limit": limit if limit else 0,
         }
-        resp = self._req_for_mongo_atlas_svc(requests.post, "/find", json=payload)
+        resp = await self._req_for_mongo_atlas_svc("POST", "/find", json=payload)
         return resp.get("results")
 
-    def update(
+    async def update(
         self,
         collection: str,
         update: dict,
-        filter: dict = {},
+        filter: dict = None,
         upsert: bool = False,
         many: bool = False,
     ):
@@ -80,24 +77,23 @@ class MongoAtlasClient(metaclass=_SingletonMeta):
             "upsert": upsert,
             "many": many,
         }
-        self._req_for_mongo_atlas_svc(requests.post, "/update", json=payload)
+        await self._req_for_mongo_atlas_svc("POST", "/update", json=payload)
 
-    def create_index(self, collection: str, keys: dict):
+    async def create_index(self, collection: str, keys: dict):
         payload = {"collection": collection, "keys": keys}
-        self._req_for_mongo_atlas_svc(requests.post, "/create_index", json=payload)
+        await self._req_for_mongo_atlas_svc("POST", "/create_index", json=payload)
 
 
 mongo_atlas_client = MongoAtlasClient()
 
 
 if __name__ == "__main__":
-    mongo_atlas_client.create_index(
-        "tm_twitch_vips",
-        keys={
-            "user_id": 1,
-        },
-    )
-    mongo_atlas_client.create_index(
-        "tm_twitch_vips",
-        keys={"active": 1, "expire_date": 1},
-    )
+    import asyncio
+
+    async def _demo():
+        await mongo_atlas_client.create_index("tm_twitch_vips", keys={"user_id": 1})
+        await mongo_atlas_client.create_index(
+            "tm_twitch_vips", keys={"active": 1, "expire_date": 1}
+        )
+
+    asyncio.run(_demo())
