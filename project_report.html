@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tm_twitch_bot 專案技術報告</title>
+<style>
+  :root{
+    --bg:#0b0e13;
+    --surface:#131822;
+    --raised:#1a2130;
+    --hover:#232c3d;
+    --border:#2c3546;
+    --border-strong:#3d495e;
+    --text:#f2f5fa;
+    --muted:#b3bdcc;
+    --faint:#8b96a8;
+    --accent:#ffb340;
+    --accent-soft:rgba(255,179,64,.16);
+    --accent-border:rgba(255,179,64,.55);
+    --sev-high:#ff8f8f;
+    --sev-high-bg:rgba(255,143,143,.18);
+    --sev-mid:#ffd257;
+    --sev-mid-bg:rgba(255,210,87,.16);
+    --sev-low:#7db8ff;
+    --sev-low-bg:rgba(125,184,255,.18);
+    --mono:"Cascadia Code",Consolas,"JetBrains Mono",monospace;
+    --radius:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:92px}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{animation:none!important;transition:none!important}
+  }
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",-apple-system,"Segoe UI",sans-serif;
+    line-height:1.75;
+    font-size:19px;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--accent-soft);color:var(--accent)}
+
+  /* ============ 導覽列 ============ */
+  .nav{
+    position:fixed;top:0;left:0;right:0;z-index:50;
+    height:72px;
+    background:rgba(11,14,19,.9);
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-inner{
+    max-width:1200px;margin:0 auto;height:100%;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 24px;gap:16px;
+  }
+  .nav-brand{
+    font-family:var(--mono);font-size:17px;font-weight:700;
+    color:var(--text);text-decoration:none;white-space:nowrap;
+  }
+  .nav-brand b{color:var(--accent);font-weight:700}
+  .nav-links{display:flex;gap:4px;list-style:none;overflow-x:auto;align-items:center}
+  .nav-links a{
+    display:block;padding:8px 16px;border-radius:999px;
+    color:var(--muted);text-decoration:none;font-size:16.5px;white-space:nowrap;
+    transition:color .2s,background .2s;
+  }
+  .nav-links a:hover{color:var(--text);background:var(--hover)}
+  .nav-links a.active{color:var(--accent);background:var(--accent-soft);font-weight:700}
+  @media (max-width:860px){
+    .nav-brand span{display:none}
+    .nav-inner{padding:0 12px}
+    .nav-links a{padding:7px 12px;font-size:15px}
+  }
+
+  /* ============ 版面 ============ */
+  .wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+  section{padding:80px 0 8px}
+  .section-head{
+    margin:0 auto 40px;max-width:70ch;
+    text-align:center;
+  }
+  .section-head h2{
+    font-size:clamp(30px,4vw,40px);font-weight:800;
+    letter-spacing:-.02em;line-height:1.3;margin-bottom:12px;
+    color:#ffffffee;
+  }
+  .section-head h2::before{
+    content:"";display:inline-block;width:12px;height:12px;
+    background:var(--accent);border-radius:3px;margin-right:14px;
+    vertical-align:baseline;
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .section-head p{color:var(--muted);font-size:18px}
+
+  /* 進場動畫 */
+  .reveal{opacity:0;transform:translateY(18px);transition:opacity .6s cubic-bezier(.16,1,.3,1),transform .6s cubic-bezier(.16,1,.3,1)}
+  .reveal.in{opacity:1;transform:none}
+  @media (prefers-reduced-motion: reduce){.reveal{opacity:1;transform:none}}
+
+  /* ============ Hero ============ */
+  .hero{padding:150px 0 56px;border-bottom:1px solid var(--border)}
+  .hero-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:48px;align-items:center}
+  @media (max-width:860px){.hero-grid{grid-template-columns:1fr;gap:28px}}
+  .hero h1{
+    font-size:clamp(34px,5vw,56px);font-weight:800;
+    letter-spacing:-.03em;line-height:1.18;margin:14px 0 22px;
+    color:#ffffffee;
+  }
+  .hero h1 em{font-style:normal;color:var(--accent)}
+  .hero-sub{color:var(--muted);font-size:19px;max-width:56ch}
+  .hero-tags{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
+  .tag{
+    font-family:var(--mono);font-size:14.5px;
+    padding:6px 15px;border-radius:999px;
+    border:1px solid var(--border-strong);color:var(--muted);
+    background:var(--surface);
+  }
+  .hero-card{
+    background:var(--surface);border:1px solid var(--border-strong);
+    border-radius:var(--radius);padding:28px;
+  }
+  .hero-card h3{
+    font-size:15.5px;color:var(--accent);font-weight:700;margin-bottom:16px;
+    letter-spacing:.06em;text-align:center;
+  }
+  .meta-list{list-style:none;display:grid;gap:0}
+  .meta-list li{
+    display:flex;justify-content:space-between;align-items:center;gap:16px;
+    padding:11px 0;border-bottom:1px solid var(--border);
+    font-size:16.5px;
+  }
+  .meta-list li:last-child{border-bottom:none}
+  .meta-list .k{color:var(--muted)}
+  .meta-list .v{font-family:var(--mono);font-size:15px;text-align:right;color:var(--text)}
+  .meta-list .v.hl{color:var(--accent);font-weight:700}
+
+  /* ============ 內文段落 ============ */
+  .prose{max-width:78ch;margin:0 auto;color:var(--muted);font-size:18.5px}
+  .prose p{margin-bottom:16px}
+  .prose p:last-child{margin-bottom:0}
+  .prose strong{color:var(--text)}
+  .prose strong.hl{color:var(--accent)}
+
+  /* ============ 功能卡片 ============ */
+  .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media (max-width:960px){.feature-grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:640px){.feature-grid{grid-template-columns:1fr}}
+  .feature{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:26px;cursor:pointer;
+    transition:border-color .25s,background .25s,transform .25s;
+    text-align:left;color:inherit;font:inherit;width:100%;
+  }
+  .feature:hover{border-color:var(--accent-border);background:var(--raised)}
+  .feature:active{transform:scale(.985)}
+  .feature.open{border-color:var(--accent);background:var(--raised);box-shadow:0 0 0 3px var(--accent-soft)}
+  .feature .f-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .feature h3{font-size:20px;font-weight:700;letter-spacing:-.01em;color:#ffffffee}
+  .feature .f-mod{font-family:var(--mono);font-size:13px;color:var(--faint);margin-top:5px;display:block}
+  .feature .f-toggle{
+    color:var(--faint);font-size:22px;line-height:1;flex-shrink:0;
+    transition:transform .25s;
+  }
+  .feature.open .f-toggle{transform:rotate(45deg);color:var(--accent)}
+  .feature p{color:var(--muted);font-size:17px;margin-top:14px}
+  .feature .f-detail{
+    display:none;margin-top:16px;padding-top:16px;
+    border-top:1px dashed var(--border-strong);
+    color:var(--muted);font-size:16.5px;
+  }
+  .feature.open .f-detail{display:block}
+  .feature .f-detail strong{color:var(--accent);font-weight:700}
+
+  /* ============ 架構圖 ============ */
+  .arch{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:32px 28px;overflow-x:auto;
+  }
+  .arch-hint{font-size:15px;color:var(--accent);margin-bottom:24px;font-family:var(--mono);text-align:center}
+  .arch-layer{margin-bottom:0}
+  .arch-layer-label{
+    font-family:var(--mono);font-size:13.5px;color:var(--faint);
+    margin-bottom:12px;letter-spacing:.06em;text-align:center;
+  }
+  .arch-row{display:grid;gap:12px}
+  .arch-row.cols-3{grid-template-columns:repeat(3,1fr)}
+  .arch-row.cols-4{grid-template-columns:repeat(4,1fr)}
+  .arch-row.cols-5{grid-template-columns:repeat(5,1fr)}
+  @media (max-width:760px){
+    .arch-row.cols-3,.arch-row.cols-4,.arch-row.cols-5{grid-template-columns:repeat(2,1fr)}
+  }
+  .arch-node{
+    background:var(--raised);border:1px solid var(--border-strong);
+    border-radius:10px;padding:14px 16px;cursor:pointer;
+    text-align:center;color:inherit;font:inherit;
+    transition:border-color .2s,background .2s,transform .2s;
+    min-height:76px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:3px;
+  }
+  .arch-node:hover{border-color:var(--accent-border);background:var(--hover)}
+  .arch-node:active{transform:scale(.97)}
+  .arch-node.active{
+    border-color:var(--accent);background:var(--accent-soft);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .arch-node .n-title{font-size:16px;font-weight:700;letter-spacing:-.01em;color:#ffffffee}
+  .arch-node.active .n-title{color:var(--accent)}
+  .arch-node .n-sub{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
+  .arch-node.active .n-sub{color:var(--muted)}
+  .arch-node.ext{border-style:dashed}
+  .arch-connector{
+    display:flex;align-items:center;justify-content:center;gap:16px;
+    padding:16px 0;
+  }
+  .arch-connector .line{width:2px;height:30px;background:var(--border-strong);position:relative}
+  .arch-connector .line::after{
+    content:"";position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);
+    border:5px solid transparent;border-top-color:var(--border-strong);
+  }
+  .arch-connector .c-label{font-family:var(--mono);font-size:13px;color:var(--faint)}
+  .arch-detail{
+    margin-top:24px;background:var(--raised);
+    border:1px solid var(--accent-border);border-radius:var(--radius);
+    padding:24px 26px;
+  }
+  .arch-detail h4{font-size:19px;font-weight:700;margin-bottom:6px;color:#ffffffee}
+  .arch-detail h4 span{font-family:var(--mono);font-size:14px;color:var(--accent);font-weight:400;margin-left:10px}
+  .arch-detail p{color:var(--muted);font-size:17px}
+  .arch-detail ul{margin:12px 0 0 0;padding-left:22px;color:var(--muted);font-size:16.5px}
+  .arch-detail li{margin-bottom:5px}
+  .arch-detail li::marker{color:var(--accent)}
+  .arch-detail code{font-family:var(--mono);font-size:14.5px;color:var(--accent);background:var(--surface);padding:1px 7px;border-radius:5px;border:1px solid var(--border)}
+
+  /* ============ 流程圖 ============ */
+  .flow-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:32px;align-items:start}
+  @media (max-width:860px){.flow-grid{grid-template-columns:1fr}}
+  .flow-steps{display:flex;flex-direction:column;gap:0;position:relative}
+  .flow-step{
+    display:flex;gap:18px;align-items:flex-start;
+    background:none;border:none;cursor:pointer;text-align:left;
+    color:inherit;font:inherit;padding:0;width:100%;
+  }
+  .flow-step .fs-rail{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:40px}
+  .flow-step .fs-dot{
+    width:40px;height:40px;border-radius:999px;flex-shrink:0;
+    border:2px solid var(--border-strong);background:var(--raised);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:15px;color:var(--muted);
+    transition:border-color .2s,background .2s,color .2s;
+  }
+  .flow-step .fs-line{width:2px;flex:1;min-height:24px;background:var(--border-strong)}
+  .flow-step:last-child .fs-line{display:none}
+  .flow-step .fs-body{padding-bottom:24px;padding-top:7px;min-width:0}
+  .flow-step .fs-title{font-size:17.5px;font-weight:600;transition:color .2s;color:var(--text)}
+  .flow-step .fs-branch{
+    display:inline-block;margin-top:4px;
+    font-family:var(--mono);font-size:13px;color:var(--faint);
+    border:1px dashed var(--border-strong);border-radius:999px;padding:2px 12px;
+  }
+  .flow-step:hover .fs-dot{border-color:var(--accent-border)}
+  .flow-step.active .fs-dot{
+    background:var(--accent);border-color:var(--accent);color:#1a1205;font-weight:700;
+    box-shadow:0 0 0 4px var(--accent-soft);
+  }
+  .flow-step.active .fs-title{color:var(--accent);font-weight:700}
+  .flow-step.active .fs-branch{color:var(--accent);border-color:var(--accent-border)}
+  .flow-step.done .fs-dot{border-color:var(--accent-border);color:var(--accent)}
+  .flow-panel{
+    position:sticky;top:96px;
+    background:var(--surface);border:1px solid var(--border-strong);
+    border-radius:var(--radius);padding:30px;
+  }
+  .flow-panel .fp-step{
+    font-family:var(--mono);font-size:14px;color:var(--accent);margin-bottom:10px;
+    font-weight:700;letter-spacing:.05em;text-align:center;
+  }
+  .flow-panel h4{
+    font-size:23px;font-weight:800;letter-spacing:-.01em;margin-bottom:14px;
+    color:#ffffffee;text-align:center;
+  }
+  .flow-panel p{color:var(--muted);font-size:17.5px}
+  .flow-panel .fp-code{
+    margin-top:18px;font-family:var(--mono);font-size:15px;
+    background:var(--bg);border:1px solid var(--border);border-radius:8px;
+    padding:14px 16px;color:#cdd6e4;overflow-x:auto;white-space:pre;
+    line-height:1.6;
+  }
+  .flow-panel .fp-code b{color:var(--accent);font-weight:700}
+  .flow-nav{display:flex;gap:12px;margin-top:22px;justify-content:center}
+  .btn{
+    font:inherit;font-size:16.5px;font-weight:700;cursor:pointer;
+    padding:10px 26px;border-radius:999px;
+    border:1px solid var(--border-strong);
+    background:var(--raised);color:var(--text);
+    transition:background .2s,border-color .2s,transform .1s;
+  }
+  .btn:hover{background:var(--hover);border-color:var(--accent-border)}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#1a1205}
+  .btn.primary:hover{background:#ffc670}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* ============ 指令表 ============ */
+  .cmd-toolbar{margin-bottom:22px;text-align:center}
+  .cmd-search{
+    width:100%;max-width:440px;
+    font:inherit;font-size:16.5px;color:var(--text);
+    background:var(--surface);border:1px solid var(--border-strong);
+    border-radius:999px;padding:11px 22px;outline:none;
+    transition:border-color .2s,box-shadow .2s;
+  }
+  .cmd-search::placeholder{color:var(--faint)}
+  .cmd-search:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .cmd-table-wrap{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);overflow-x:auto;
+  }
+  table{width:100%;border-collapse:collapse;min-width:560px}
+  th{
+    text-align:left;font-size:14.5px;color:var(--accent);font-weight:700;
+    padding:16px 22px;border-bottom:2px solid var(--border-strong);
+    letter-spacing:.05em;
+  }
+  td{padding:14px 22px;font-size:17px;border-bottom:1px solid var(--border)}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr{transition:background .15s}
+  tbody tr:hover{background:var(--raised)}
+  td.cmd{font-family:var(--mono);font-size:15.5px;color:var(--accent);white-space:nowrap;font-weight:600}
+  td.mod{font-family:var(--mono);font-size:14px;color:var(--faint)}
+  .cmd-empty{padding:32px;text-align:center;color:var(--faint);font-size:17px;display:none}
+
+  /* ============ 優化建議 ============ */
+  .sug-toolbar{
+    display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px;
+    align-items:center;justify-content:center;
+  }
+  .chip{
+    font:inherit;font-size:16px;cursor:pointer;
+    padding:8px 20px;border-radius:999px;
+    border:1px solid var(--border-strong);
+    background:var(--surface);color:var(--muted);
+    transition:all .2s;
+  }
+  .chip:hover{color:var(--text);border-color:var(--accent-border)}
+  .chip.active{
+    background:var(--accent-soft);border-color:var(--accent);color:var(--accent);
+    font-weight:700;
+  }
+  .chip .cnt{font-family:var(--mono);font-size:13px;opacity:.85;margin-left:6px}
+  .sug-list{display:flex;flex-direction:column;gap:12px}
+  .sug{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);overflow:hidden;
+    transition:border-color .2s,box-shadow .2s;
+  }
+  .sug.open{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
+  .sug-head{
+    display:flex;align-items:center;gap:14px;width:100%;
+    background:none;border:none;cursor:pointer;text-align:left;
+    color:inherit;font:inherit;padding:18px 22px;
+  }
+  .sug-head:hover{background:var(--raised)}
+  .sev{
+    font-size:13.5px;font-weight:700;padding:4px 13px;border-radius:999px;
+    flex-shrink:0;letter-spacing:.04em;
+  }
+  .sev.high{color:var(--sev-high);background:var(--sev-high-bg);border:1px solid rgba(255,143,143,.4)}
+  .sev.mid{color:var(--sev-mid);background:var(--sev-mid-bg);border:1px solid rgba(255,210,87,.35)}
+  .sev.low{color:var(--sev-low);background:var(--sev-low-bg);border:1px solid rgba(125,184,255,.4)}
+  .sug-cat{
+    font-size:13.5px;color:var(--muted);flex-shrink:0;
+    border:1px solid var(--border-strong);border-radius:999px;padding:3px 12px;
+  }
+  .sug-title{font-size:17.5px;font-weight:700;flex:1;min-width:0;color:var(--text)}
+  .sug.open .sug-title{color:var(--accent)}
+  .sug-arrow{color:var(--faint);flex-shrink:0;transition:transform .25s;font-size:14px}
+  .sug.open .sug-arrow{transform:rotate(90deg);color:var(--accent)}
+  .sug-body{display:none;padding:2px 22px 22px 22px}
+  .sug.open .sug-body{display:block}
+  .sug-body p{color:var(--muted);font-size:17px;max-width:78ch}
+  .sug-body .fix{
+    margin-top:14px;padding:14px 18px;border-radius:8px;
+    background:var(--accent-soft);border:1px solid var(--accent-border);
+    font-size:16.5px;color:var(--text);max-width:78ch;
+  }
+  .sug-body .fix::before{content:"建議修正：";font-weight:800;color:var(--accent)}
+  .sug-body .files{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+  .sug-body .files code{
+    font-family:var(--mono);font-size:13.5px;color:var(--muted);
+    background:var(--bg);border:1px solid var(--border-strong);
+    padding:3px 10px;border-radius:5px;
+  }
+  @media (max-width:640px){
+    .sug-cat{display:none}
+    .sug-head{padding:16px 14px}
+    .sug-body{padding:2px 14px 18px}
+  }
+
+  /* ============ Footer ============ */
+  footer{
+    margin-top:88px;border-top:1px solid var(--border);
+    padding:36px 0 44px;color:var(--faint);font-size:15px;
+  }
+  footer .wrap{
+    display:flex;flex-direction:column;align-items:center;
+    gap:6px;text-align:center;
+  }
+  footer code{font-family:var(--mono);font-size:14px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="#top"><b>tm</b>_twitch_bot <span style="color:var(--faint)">/ 技術報告</span></a>
+    <ul class="nav-links">
+      <li><a href="#overview">總覽</a></li>
+      <li><a href="#features">功能</a></li>
+      <li><a href="#arch">架構</a></li>
+      <li><a href="#flow">流程</a></li>
+      <li><a href="#commands">指令</a></li>
+      <li><a href="#suggestions">優化建議</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============ Hero ============ -->
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <h1>聊天即遊戲：<br>為 <em>虎喵頻道</em> 打造的<br>Twitch 互動機器人</h1>
+      <p class="hero-sub">
+        tm_twitch_bot 讓觀眾在聊天室發言即可養成 RPG 角色、參與小遊戲、與 AI 互動，
+        並以金幣兌換頻道 VIP。指令與文案集中於 Google Sheets 維護，營運不需改程式。
+      </p>
+      <div class="hero-tags">
+        <span class="tag">Python 3.13</span>
+        <span class="tag">Poetry</span>
+        <span class="tag">twitchio 2.x</span>
+        <span class="tag">twitchAPI 4.x</span>
+        <span class="tag">FastAPI</span>
+        <span class="tag">MongoDB Atlas</span>
+        <span class="tag">OpenAI</span>
+      </div>
+    </div>
+    <aside class="hero-card">
+      <h3>專 案 快 照</h3>
+      <ul class="meta-list">
+        <li><span class="k">服務頻道</span><span class="v hl">twitch.tv/tigermeowtw</span></li>
+        <li><span class="k">Python 模組</span><span class="v">28 個（src/）</span></li>
+        <li><span class="k">本地微服務依賴</span><span class="v">4 個（:9091 至 :9094）</span></li>
+        <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
+        <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-high)">0（tests/ 為空）</span></li>
+      </ul>
+    </aside>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ 總覽 ============ -->
+  <section id="overview">
+    <div class="section-head reveal">
+      <h2>專案介紹</h2>
+      <p>核心設計理念與整體定位。</p>
+    </div>
+    <div class="reveal prose">
+      <p>
+        本專案是一個常駐型 Twitch 聊天機器人，透過 <strong>twitchio</strong> 監聽 IRC 聊天訊息、
+        透過 <strong>twitchAPI</strong> 的 EventSub WebSocket 接收忠誠點數兌換事件，
+        並以 Helix API 執行 VIP 授予與移除。
+      </p>
+      <p>
+        架構上最大的特色是「<strong class="hl">Bot 主程式 + 本地微服務</strong>」的拆分：
+        Google Sheets、OpenAI、MongoDB Atlas、YouTube 四種外部資源都不直接在 Bot 內呼叫，
+        而是各自由一個本地 HTTP 服務代理，Bot 端僅保留輕量的 HTTP Client（svc_client 套件）。
+        這讓外部依賴的憑證與 SDK 版本可以獨立於 Bot 演進。
+      </p>
+      <p>
+        第二個特色是「<strong class="hl">Google Sheets 作為 CMS</strong>」：
+        指令觸發詞、回覆內容、轉職表、食物清單、諧音梗等營運內容全部放在試算表，
+        指令派發器（command_dispatcher）依表格設定動態載入對應的 Python 函數，
+        新增指令不需要動到程式碼。
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 功能 ============ -->
+  <section id="features">
+    <div class="section-head reveal">
+      <h2>六大功能模組</h2>
+      <p>點擊卡片可展開細節。</p>
+    </div>
+    <div class="feature-grid reveal">
+      <button class="feature" type="button">
+        <div class="f-head"><h3>RPG 角色養成</h3><span class="f-toggle">+</span></div>
+        <span class="f-mod">role_system / level_and_job_system / rank_system</span>
+        <p>發言即獲得經驗與金幣，升級隨機加屬性，10 等一轉、15 等二轉。</p>
+        <div class="f-detail">
+          每位觀眾首次發言自動建角，欄位含等級、經驗、金幣、職業與六維屬性（STR / AGI / VIT / INT / DEX / LUK）。
+          升級所需經驗為 <strong>等級 × 10</strong>，轉職職業表由 Sheets「轉職表」維護，
+          達門檻時隨機轉職並在聊天室廣播。<strong>!英雄 / !富翁</strong> 提供等級榜與財富榜。
+        </div>
+      </button>
+      <button class="feature" type="button">
+        <div class="f-head"><h3>經濟系統小遊戲</h3><span class="f-toggle">+</span></div>
+        <span class="f-mod">games / gacha_handler</span>
+        <p>終極密碼、一桶金、十連抽卡，金幣在觀眾之間流動。</p>
+        <div class="f-detail">
+          <strong>終極密碼</strong>：猜 0 至 1000 的數字，每猜一次收 5 Gold 並灌 2 Gold 進彩金池，越早猜中基礎獎越高（第 1 次 5090 Gold）。
+          <strong>一桶金</strong>：限時投注（每人上限 10 Gold），結束後依投入比例加權抽出得主獨得全池。
+          <strong>抽卡</strong>：20 Gold 十連抽，稀有表符對應 Gold 回饋。
+        </div>
+      </button>
+      <button class="feature" type="button">
+        <div class="f-head"><h3>AI 互動</h3><span class="f-toggle">+</span></div>
+        <span class="f-mod">ai_actions / svc_client.openai</span>
+        <p>!gpt 人設聊天與 !pk AI 旁白對戰，皆走 OpenAI 服務。</p>
+        <div class="f-detail">
+          <strong>!gpt</strong>：具「虎喵粉絲」人設的聊天 Session，歷史存 MongoDB，
+          超過 4096 token 自動裁掉最舊的一組問答。
+          <strong>!pk</strong>：取雙方角色數值組成對戰資訊，要求模型以 JSON Schema 結構化輸出
+          勝者與約 25 字的戲劇化戰報。
+        </div>
+      </button>
+      <button class="feature" type="button">
+        <div class="f-head"><h3>VIP 兌換系統</h3><span class="f-toggle">+</span></div>
+        <span class="f-mod">vip_system / twitch_vips_api</span>
+        <p>100 Gold 兌換 31 天頻道 VIP，實際透過 Helix API 授予徽章。</p>
+        <div class="f-detail">
+          名額上限 51 人，兌換時檢查現有 VIP 身分、名額與餘額，成功後寫入
+          <strong>tm_twitch_vips</strong> 並記錄兌換歷史。啟動時執行過期掃描（sweep），
+          移除到期 VIP 並更新資料庫。
+        </div>
+      </button>
+      <button class="feature" type="button">
+        <div class="f-head"><h3>排程任務</h3><span class="f-toggle">+</span></div>
+        <span class="f-mod">task_scheduler</span>
+        <p>喝水提醒、隨機開遊戲、換日提醒，interval 與 daily 兩種型態。</p>
+        <div class="f-detail">
+          自製的 asyncio <strong>TaskScheduler</strong> 支援固定間隔與每日定時任務，
+          可註冊多個函數隨機執行其一。目前排定：每 20 分鐘喝水提醒、
+          每 30 分鐘隨機開啟終極密碼或一桶金、每日 23:59 換日提醒。
+        </div>
+      </button>
+      <button class="feature" type="button">
+        <div class="f-head"><h3>聊天品質控管</h3><span class="f-toggle">+</span></div>
+        <span class="f-mod">message_controller / greeter</span>
+        <p>冷卻、洗頻過濾、機器人忽略，加上分時段的首次招呼。</p>
+        <div class="f-detail">
+          每則訊息經過 3 秒冷卻與重複訊息檢查，機器人帳號直接忽略。
+          首次發言依台灣時區送出早安 / 午安 / 晚安招呼並贈送 3 EXP 與 3 Gold，
+          兼具反洗頻與新觀眾體驗。
+        </div>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ 架構 ============ -->
+  <section id="arch">
+    <div class="section-head reveal">
+      <h2>系統架構圖</h2>
+      <p>由上而下為：Twitch 平台、Bot 核心、服務代理層、本地微服務與外部資源。點擊節點查看職責說明。</p>
+    </div>
+    <div class="arch reveal">
+      <div class="arch-hint">// 互動式架構圖：點擊任一節點</div>
+
+      <div class="arch-layer">
+        <div class="arch-layer-label">LAYER 1 · TWITCH 平台</div>
+        <div class="arch-row cols-3">
+          <button class="arch-node ext" type="button" data-node="irc"><span class="n-title">IRC 聊天</span><span class="n-sub">twitchio</span></button>
+          <button class="arch-node ext" type="button" data-node="eventsub"><span class="n-title">EventSub WebSocket</span><span class="n-sub">twitchAPI</span></button>
+          <button class="arch-node ext" type="button" data-node="helix"><span class="n-title">Helix API</span><span class="n-sub">VIP 管理</span></button>
+        </div>
+      </div>
+
+      <div class="arch-connector"><span class="c-label">聊天訊息 / 事件</span><div class="line"></div><span class="c-label">REST 呼叫</span></div>
+
+      <div class="arch-layer">
+        <div class="arch-layer-label">LAYER 2 · BOT 核心（main.py）</div>
+        <div class="arch-row cols-4">
+          <button class="arch-node" type="button" data-node="main"><span class="n-title">MyBot 進入點</span><span class="n-sub">main.py</span></button>
+          <button class="arch-node" type="button" data-node="msgctrl"><span class="n-title">訊息控制器</span><span class="n-sub">message_controller</span></button>
+          <button class="arch-node" type="button" data-node="dispatcher"><span class="n-title">指令派發器</span><span class="n-sub">command_dispatcher</span></button>
+          <button class="arch-node" type="button" data-node="scheduler"><span class="n-title">任務排程器</span><span class="n-sub">task_scheduler</span></button>
+        </div>
+      </div>
+
+      <div class="arch-connector"><div class="line"></div></div>
+
+      <div class="arch-layer">
+        <div class="arch-layer-label">LAYER 3 · 業務模組與服務代理</div>
+        <div class="arch-row cols-3">
+          <button class="arch-node" type="button" data-node="domain"><span class="n-title">業務模組</span><span class="n-sub">RPG / VIP / 遊戲 / AI</span></button>
+          <button class="arch-node" type="button" data-node="svc"><span class="n-title">svc_client</span><span class="n-sub">HTTP Client 層</span></button>
+          <button class="arch-node" type="button" data-node="oauth"><span class="n-title">OAuth 伺服器</span><span class="n-sub">FastAPI :8096</span></button>
+        </div>
+      </div>
+
+      <div class="arch-connector"><span class="c-label">HTTP（requests）</span><div class="line"></div></div>
+
+      <div class="arch-layer">
+        <div class="arch-layer-label">LAYER 4 · 本地微服務（獨立專案，需先啟動）</div>
+        <div class="arch-row cols-4">
+          <button class="arch-node ext" type="button" data-node="gs"><span class="n-title">Google Sheets</span><span class="n-sub">:9091 指令 / 文案</span></button>
+          <button class="arch-node ext" type="button" data-node="oa"><span class="n-title">OpenAI</span><span class="n-sub">:9092 GPT / 對戰</span></button>
+          <button class="arch-node ext" type="button" data-node="mg"><span class="n-title">MongoDB Atlas</span><span class="n-sub">:9093 資料存取</span></button>
+          <button class="arch-node ext" type="button" data-node="yt"><span class="n-title">YouTube</span><span class="n-sub">:9094 歌單</span></button>
+        </div>
+      </div>
+
+      <div class="arch-detail" id="archDetail">
+        <h4 id="adTitle">點擊上方節點<span id="adFile"></span></h4>
+        <p id="adDesc">選擇任一節點後，這裡會顯示該元件的職責、關鍵檔案與依賴關係。</p>
+        <ul id="adPoints" style="display:none"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 流程 ============ -->
+  <section id="flow">
+    <div class="section-head reveal">
+      <h2>訊息處理流程</h2>
+      <p>每一則聊天訊息在 message_controller.handle_message 中的完整旅程。點擊步驟或使用按鈕逐步導覽。</p>
+    </div>
+    <div class="flow-grid reveal">
+      <div class="flow-steps" id="flowSteps"></div>
+      <div class="flow-panel">
+        <div class="fp-step" id="fpStep">STEP 1 / 11</div>
+        <h4 id="fpTitle"></h4>
+        <p id="fpDesc"></p>
+        <div class="fp-code" id="fpCode"></div>
+        <div class="flow-nav">
+          <button class="btn" type="button" id="flowPrev">上一步</button>
+          <button class="btn primary" type="button" id="flowNext">下一步</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 指令 ============ -->
+  <section id="commands">
+    <div class="section-head reveal">
+      <h2>指令一覽</h2>
+      <p>實際觸發詞以 Google Sheets「指令集」為準，此處為程式內的功能對應。</p>
+    </div>
+    <div class="reveal">
+      <div class="cmd-toolbar">
+        <input class="cmd-search" type="search" id="cmdSearch" placeholder="搜尋指令或功能…" aria-label="搜尋指令">
+      </div>
+      <div class="cmd-table-wrap">
+        <table id="cmdTable">
+          <thead>
+            <tr><th>指令</th><th>功能</th><th>對應模組</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="cmd">!INFO</td><td>查看自己的角色資訊</td><td class="mod">role_system.check</td></tr>
+            <tr><td class="cmd">!英雄</td><td>等級排行榜 Top 3</td><td class="mod">rank_system.top_heroes</td></tr>
+            <tr><td class="cmd">!富翁</td><td>財富排行榜 Top 3</td><td class="mod">rank_system.top_richest</td></tr>
+            <tr><td class="cmd">!抽</td><td>20 Gold 十連抽</td><td class="mod">gacha_handler.gacha</td></tr>
+            <tr><td class="cmd">!猜 &lt;數字&gt;</td><td>終極密碼猜數字</td><td class="mod">guess_number_game.guess</td></tr>
+            <tr><td class="cmd">!投 &lt;金額&gt;</td><td>一桶金投注</td><td class="mod">gold_rush_game.toss</td></tr>
+            <tr><td class="cmd">!gpt &lt;問題&gt;</td><td>與 AI 聊天（虎喵粉絲人設）</td><td class="mod">gpt_chat_session.ask</td></tr>
+            <tr><td class="cmd">!pk @對象</td><td>AI 旁白 RPG 對戰</td><td class="mod">duel.pk</td></tr>
+            <tr><td class="cmd">!vip</td><td>100 Gold 兌換 31 天 VIP</td><td class="mod">vip_system.redeem</td></tr>
+            <tr><td class="cmd">!吃</td><td>隨機推薦食物</td><td class="mod">daily_food_picker.pick</td></tr>
+            <tr><td class="cmd">!梗</td><td>隨機諧音梗</td><td class="mod">daily_meme_picker.pick</td></tr>
+            <tr><td class="cmd">!YT</td><td>隨機推薦歌單歌曲</td><td class="mod">youtube.pick</td></tr>
+            <tr><td class="cmd">!找歌 &lt;關鍵字&gt;</td><td>搜尋虎喵歌單</td><td class="mod">youtube.search_song</td></tr>
+            <tr><td class="cmd">關鍵字觸發</td><td>句子含特定詞即回覆（例：帥）</td><td class="mod">command_dispatcher</td></tr>
+            <tr><td class="cmd">管理員限定</td><td>手動開啟終極密碼 / 一桶金</td><td class="mod">games.*.start</td></tr>
+          </tbody>
+        </table>
+        <div class="cmd-empty" id="cmdEmpty">沒有符合的指令</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 優化建議 ============ -->
+  <section id="suggestions">
+    <div class="section-head reveal">
+      <h2>優化建議</h2>
+      <p>依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。</p>
+    </div>
+    <div class="reveal">
+      <div class="sug-toolbar" id="sugToolbar">
+        <button class="chip active" type="button" data-cat="all">全部<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="sec">安全性<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="bug">正確性<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="perf">效能與穩定性<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="quality">程式品質<span class="cnt"></span></button>
+      </div>
+      <div class="sug-list" id="sugList"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>tm_twitch_bot 專案技術報告 · 2026-07-10</span>
+    <span>由系統架構審閱產出 · <code>project_report.html</code></span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- 進場動畫（尊重減少動態偏好） ---------- */
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var reveals = document.querySelectorAll(".reveal");
+  if (reduceMotion || !("IntersectionObserver" in window)) {
+    reveals.forEach(function(el){ el.classList.add("in"); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, {threshold: .12});
+    reveals.forEach(function(el){ io.observe(el); });
+  }
+
+  /* ---------- 導覽列 scrollspy（IntersectionObserver，不使用 scroll 監聽） ---------- */
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll(".nav-links a"));
+  var sections = navLinks.map(function(a){ return document.querySelector(a.getAttribute("href")); });
+  function setActiveNav(idx){
+    navLinks.forEach(function(a, i){ a.classList.toggle("active", i === idx); });
+  }
+  if ("IntersectionObserver" in window) {
+    var spy = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting) setActiveNav(sections.indexOf(e.target));
+      });
+    }, {rootMargin: "-15% 0px -70% 0px"});
+    sections.forEach(function(sec){ if (sec) spy.observe(sec); });
+  }
+  setActiveNav(0);
+
+  /* ---------- 功能卡片展開 ---------- */
+  document.querySelectorAll(".feature").forEach(function(card){
+    card.addEventListener("click", function(){ card.classList.toggle("open"); });
+  });
+
+  /* ---------- 架構圖節點 ---------- */
+  var ARCH_INFO = {
+    irc: {
+      title: "IRC 聊天（twitchio）", file: "main.py",
+      desc: "以 twitchio 的 commands.Bot 連線聊天室，接收與發送訊息。Bot 上線時廣播公告與指令集連結。",
+      points: ["token 以 oauth:{ACCESS} 形式在啟動時固定傳入", "測試模式（is_test）下只回應頻道主的訊息", "所有訊息交給 message_controller 處理"]
+    },
+    eventsub: {
+      title: "EventSub WebSocket（twitchAPI）", file: "main.py",
+      desc: "訂閱 channel_points_custom_reward_redemption_add 事件，接收忠誠點數兌換通知。",
+      points: ["event_ready 時建立 WebSocket 並註冊 on_points callback", "目前僅記錄 log，尚未接上實際獎勵邏輯", "已知問題：偶爾收不到其他使用者的兌換事件（TODO）"]
+    },
+    helix: {
+      title: "Helix API（VIP 管理）", file: "svc_client/twitch_vips_api.py",
+      desc: "直接呼叫 Twitch Helix REST API，負責頻道 VIP 的新增、移除與查詢。",
+      points: ["add_channel_vip / remove_channel_vip 回傳 (成功與否, 錯誤內容)", "需要 channel:manage:vips 與 channel:read:vips scope", "由 vip_system 在兌換與過期掃描時呼叫"]
+    },
+    main: {
+      title: "MyBot 進入點", file: "main.py",
+      desc: "程式進入點：驗證 access token（失效時用 refresh token 換新並寫回 YAML）、建立 twitchAPI 物件、啟動 Bot、註冊 EventSub 與排程任務。",
+      points: ["Windows 下切換為 SelectorEventLoop 政策", "vip_system.set_api_context 注入 client_id / broadcaster_id / token getter", "啟動時執行一次 VIP 過期掃描"]
+    },
+    msgctrl: {
+      title: "訊息控制器", file: "scripts/message_controller.py",
+      desc: "每則訊息的處理管線：過濾機器人、載入角色、冷卻與洗頻檢查、首次招呼、發言獎勵、指令派發、角色存檔。",
+      points: ["3 秒冷卻（每使用者）與重複訊息過濾", "首次發言送出分時段招呼並加贈 3 EXP / 3 Gold", "每句話 +1 EXP / +1 Gold，可能觸發升級與轉職廣播"]
+    },
+    dispatcher: {
+      title: "指令派發器", file: "scripts/command_dispatcher.py",
+      desc: "啟動時從 Sheets「指令集」載入 觸發詞 → (類型, 內容) 對照表。text 類型直接回覆文字；function 類型以 importlib 動態載入並執行對應函數。",
+      points: ["支援 !指令、!指令 參數、無驚嘆號關鍵字三種型態", "全形驚嘆號正規化、指令大小寫不敏感", "模組與函數皆有快取（lru_cache）"]
+    },
+    scheduler: {
+      title: "任務排程器", file: "scripts/task_scheduler.py",
+      desc: "自製 asyncio 排程器，支援 interval 與 daily 任務，可註冊多個函數隨機執行其一。",
+      points: ["每 20 分鐘喝水提醒", "每 30 分鐘隨機開啟終極密碼或一桶金", "每日 23:59 換日提醒"]
+    },
+    domain: {
+      title: "業務模組", file: "scripts/ · games/ · ai_actions/",
+      desc: "承載所有玩法邏輯：RPG 角色（Character）、VIP 兌換、抽卡、兩款小遊戲、GPT 聊天與 AI 對戰。",
+      points: ["Character dataclass 是核心資料模型，存於 tm_twitch_users", "遊戲與 GPT Session 皆為執行緒安全的 Singleton", "彼此透過 command_dispatcher 的 context（char / message）串接"]
+    },
+    svc: {
+      title: "svc_client（HTTP Client 層）", file: "svc_client/",
+      desc: "對四個本地微服務的統一存取層，皆為 Singleton，底層用 requests 搭配三次重試。",
+      points: ["google_sheets / openai / mongo_atlas / youtube 四個 client", "request_with_retries：3 次嘗試、間隔 5 秒、讀取逾時 600 秒", "注意：同步呼叫，在 asyncio 事件圈內會阻塞（見優化建議）"]
+    },
+    oauth: {
+      title: "OAuth 伺服器", file: "oauth/server.py",
+      desc: "FastAPI 撰寫的一次性授權工具：接收 Twitch OAuth callback，用 authorization code 換取 access / refresh token。",
+      points: ["僅在首次授權或 scope 變更時手動執行", "port 8096，redirect_uri 指向自架網域", "取得的 token 需手動填回 config_common.yaml"]
+    },
+    gs: {
+      title: "Google Sheets 微服務", file: "localhost:9091",
+      desc: "代理 Google Sheets 讀取。Bot 從這裡取得指令集、轉職表、吃啥、諧音梗、冒險台詞等營運內容。",
+      points: ["get_sheet_data(sheetName) 回傳整張工作表", "內容多在 Bot 啟動（import）時一次載入", "修改試算表後需重啟 Bot 才生效"]
+    },
+    oa: {
+      title: "OpenAI 微服務", file: "localhost:9092",
+      desc: "代理 OpenAI API：/conversation 做多輪聊天、/structured_output 做 JSON Schema 結構化輸出。",
+      points: ["模型設定於 config（目前 gpt-5-nano）", "!gpt 與 !pk 的後端", "api_key 由 Bot 端隨請求傳遞"]
+    },
+    mg: {
+      title: "MongoDB Atlas 微服務", file: "localhost:9093",
+      desc: "代理 MongoDB Atlas 的 CRUD 與索引操作，是所有持久化資料的出入口。",
+      points: ["tm_twitch_users：角色資料與發言統計", "tm_twitch_vips：VIP 狀態與兌換歷史", "gpt_chat_sessions：GPT 對話歷史"]
+    },
+    yt: {
+      title: "YouTube 微服務", file: "localhost:9094",
+      desc: "代理 YouTube 播放清單查詢，供 !YT 隨機推薦與 !找歌 關鍵字搜尋。",
+      points: ["啟動時抓取一次歌單並快取", "快取目前不會自動失效（見優化建議）"]
+    }
+  };
+  var archNodes = document.querySelectorAll(".arch-node");
+  var adTitle = document.getElementById("adTitle");
+  var adFile = document.getElementById("adFile");
+  var adDesc = document.getElementById("adDesc");
+  var adPoints = document.getElementById("adPoints");
+  archNodes.forEach(function(node){
+    node.addEventListener("click", function(){
+      archNodes.forEach(function(n){ n.classList.remove("active"); });
+      node.classList.add("active");
+      var info = ARCH_INFO[node.getAttribute("data-node")];
+      if (!info) return;
+      adTitle.childNodes[0].nodeValue = info.title;
+      adFile.textContent = info.file;
+      adDesc.textContent = info.desc;
+      adPoints.innerHTML = "";
+      info.points.forEach(function(pt){
+        var li = document.createElement("li");
+        li.textContent = pt;
+        adPoints.appendChild(li);
+      });
+      adPoints.style.display = "block";
+    });
+  });
+
+  /* ---------- 訊息流程 stepper ---------- */
+  var FLOW = [
+    {t:"訊息進入 event_message", b:null,
+     d:"twitchio 收到聊天訊息後觸發 event_message。若為 Bot 自己的回音（echo）直接略過；測試模式下只放行頻道主的訊息。",
+     c:"main.py\nasync def <b>event_message</b>(self, message):\n    await handle_message(message)"},
+    {t:"機器人帳號過濾", b:"是 → 忽略",
+     d:"比對 config 中的 bot_user_id 清單，其他機器人（如 Nightbot）發的訊息不進入後續流程，避免互相觸發。",
+     c:"message_controller.py\nif user_id in config[<b>\"bot_user_id\"</b>]:\n    return"},
+    {t:"載入或建立角色", b:null,
+     d:"以 user_id 查詢 tm_twitch_users，存在則轉為 Character 物件並補記最新暱稱；不存在則以預設屬性建角並寫入資料庫。",
+     c:"role_system.py\nchar = Character.<b>load_or_create</b>(\n    user_id, username, display_name)"},
+    {t:"累計發言次數", b:null,
+     d:"不論這句話後續是否被冷卻或洗頻規則擋下，total_msgs 都先 +1，作為真實聊天活躍度的統計。",
+     c:"message_controller.py\nmongo.update(..., {\"$inc\": {<b>\"total_msgs\"</b>: 1}})"},
+    {t:"3 秒冷卻檢查", b:"冷卻中 → 忽略",
+     d:"以 monotonic 時間記錄每位使用者上次通過的時間，3 秒內的後續訊息整句忽略（不給獎勵、不派發指令）。",
+     c:"message_controller.py\nif now - _last_cmd_ts.get(user_id, 0) < <b>CHAT_CD</b>:\n    return"},
+    {t:"重複訊息檢查", b:"與上句相同 → 忽略",
+     d:"與該使用者上一句完全相同的內容視為洗頻，直接忽略。",
+     c:"message_controller.py\nif _last_message.get(user_id) == content:\n    return  <b># 洗頻</b>"},
+    {t:"首次發言招呼", b:"首次 → 招呼 + 3 EXP / 3 Gold",
+     d:"本次啟動期間第一次發言的觀眾，依台灣時區送出早安 / 午安 / 晚安招呼，並加贈 3 點經驗與 3 金幣。",
+     c:"greeter.py\ngreet = <b>greet_user</b>(user_id)\nawait channel.send(f\"@{name} {greet}\")"},
+    {t:"發言獎勵", b:null,
+     d:"每句話固定 +1 EXP 與 +1 Gold。經驗累積達「等級 × 10」即升級，隨機提升一項屬性；到達 10 / 15 等時隨機轉職並廣播。",
+     c:"role_system.py\nawait char.<b>gain_exp</b>(1, send)\nchar.<b>gain_gold</b>(1)"},
+    {t:"指令派發", b:null,
+     d:"將訊息正規化後比對指令表：text 類型直接回覆設定的文字；function 類型動態載入模組函數，並把 char、message 等 context 傳入。",
+     c:"command_dispatcher.py\nreply = <b>dispatch_command</b>(content,\n    char=char, message=message)"},
+    {t:"回覆訊息", b:"無回覆內容 → 跳過",
+     d:"若派發結果非空，以 @顯示名稱 開頭回覆到聊天室。",
+     c:"message_controller.py\nawait message.channel.send(\n    f\"@{display_name} {cmd_reply}\")"},
+    {t:"角色存檔", b:null,
+     d:"把這一輪累積的等級、經驗、金幣、職業、屬性與暱稱變動一次寫回 MongoDB，完成整個處理循環。",
+     c:"role_system.py\nchar.<b>save</b>()  # $set + $addToSet"}
+  ];
+  var flowSteps = document.getElementById("flowSteps");
+  FLOW.forEach(function(step, i){
+    var btn = document.createElement("button");
+    btn.className = "flow-step";
+    btn.type = "button";
+    var branch = step.b ? '<span class="fs-branch">' + step.b + '</span>' : '';
+    btn.innerHTML =
+      '<span class="fs-rail"><span class="fs-dot">' + (i+1) + '</span><span class="fs-line"></span></span>' +
+      '<span class="fs-body"><span class="fs-title">' + step.t + '</span>' + branch + '</span>';
+    btn.addEventListener("click", function(){ setFlow(i); });
+    flowSteps.appendChild(btn);
+  });
+  var flowIdx = 0;
+  var fpStep = document.getElementById("fpStep");
+  var fpTitle = document.getElementById("fpTitle");
+  var fpDesc = document.getElementById("fpDesc");
+  var fpCode = document.getElementById("fpCode");
+  var flowPrev = document.getElementById("flowPrev");
+  var flowNext = document.getElementById("flowNext");
+  function setFlow(i){
+    flowIdx = Math.max(0, Math.min(FLOW.length - 1, i));
+    var stepEls = flowSteps.querySelectorAll(".flow-step");
+    stepEls.forEach(function(el, j){
+      el.classList.toggle("active", j === flowIdx);
+      el.classList.toggle("done", j < flowIdx);
+    });
+    var s = FLOW[flowIdx];
+    fpStep.textContent = "STEP " + (flowIdx+1) + " / " + FLOW.length;
+    fpTitle.textContent = s.t;
+    fpDesc.textContent = s.d;
+    fpCode.innerHTML = s.c;
+    flowPrev.disabled = (flowIdx === 0);
+    flowNext.textContent = (flowIdx === FLOW.length - 1) ? "回到開頭" : "下一步";
+  }
+  flowPrev.addEventListener("click", function(){ setFlow(flowIdx - 1); });
+  flowNext.addEventListener("click", function(){
+    setFlow(flowIdx === FLOW.length - 1 ? 0 : flowIdx + 1);
+  });
+  setFlow(0);
+
+  /* ---------- 指令搜尋 ---------- */
+  var cmdSearch = document.getElementById("cmdSearch");
+  var cmdRows = document.querySelectorAll("#cmdTable tbody tr");
+  var cmdEmpty = document.getElementById("cmdEmpty");
+  cmdSearch.addEventListener("input", function(){
+    var q = cmdSearch.value.trim().toLowerCase();
+    var visible = 0;
+    cmdRows.forEach(function(row){
+      var hit = row.textContent.toLowerCase().indexOf(q) !== -1;
+      row.style.display = hit ? "" : "none";
+      if (hit) visible++;
+    });
+    cmdEmpty.style.display = visible === 0 ? "block" : "none";
+  });
+
+  /* ---------- 優化建議 ---------- */
+  var SUGGESTIONS = [
+    {cat:"sec", sev:"high", title:"設定檔存放明文機密，且已隨專案流通",
+     desc:"config_common.yaml 內含 Twitch access / refresh token、client_secret 與 OpenAI API key 的明文。任何拿到這份專案的人都能直接冒用頻道身分與計費額度。",
+     fix:"改用環境變數或密鑰管理服務（Vault / Secret Manager）；將設定檔加入 .gitignore 並提供 config.example.yaml 範本；懷疑外洩時立即輪替 Twitch Client Secret 與 OpenAI API Key。",
+     files:["config/config_common.yaml","utils/yaml_utils.py"]},
+    {cat:"sec", sev:"high", title:"指令表可動態載入任意模組函數",
+     desc:"command_dispatcher._load_function 依 Sheets 內容以 importlib 載入「任意 module.func」。具有試算表編輯權的人等同能在 Bot 主機上執行任意 Python 函數，試算表成為隱形的信任邊界。",
+     fix:"改為顯式的函數註冊表（registry dict），或至少白名單限制模組前綴必須是 tm_twitch_bot.*，並在載入時記錄稽核 log。",
+     files:["scripts/command_dispatcher.py"]},
+    {cat:"sec", sev:"mid", title:"使用者輸入直接拼進 MongoDB 正規表達式",
+     desc:"find_by_name 把 !pk 的目標名稱直接放進 $regex 的 ^{name}$。名稱含 (、[、* 等特殊字元時查詢會失敗或產生非預期比對。",
+     fix:"以 re.escape(name) 跳脫後再組 regex，或改用大小寫不敏感的精確比對欄位。",
+     files:["scripts/role_system.py"]},
+    {cat:"bug", sev:"high", title:"sweep_expired 缺少 return，停用時仍執行掃描",
+     desc:"vip_system.sweep_expired 開頭檢查 cfg.enabled 為否時只記了一行 warning，沒有 return，後續的過期掃描與 VIP 移除照常執行，與設定語意相反。",
+     fix:"在 logger.warning 之後補上 return。",
+     files:["scripts/vip_system.py:151"]},
+    {cat:"bug", sev:"high", title:"Token 自動刷新後，VIP 系統拿到的是舊 token",
+     desc:"twitchAPI 自動刷新 token 時 callback（save_tokens）只把新值寫回 YAML，沒有更新模組層級的 ACCESS 變數。vip_system 的 token_getter 是 lambda: ACCESS，之後兌換 VIP 會以過期 token 呼叫 Helix 而收到 401。",
+     fix:"建立單一的 TokenManager 物件保存最新 token，refresh callback 與 token_getter 都指向同一實例；twitchio 的聊天連線 token 也應納入同一機制。",
+     files:["main.py:98","utils/yaml_utils.py"]},
+    {cat:"bug", sev:"mid", title:"一桶金的結束訊息可能永遠不會送出",
+     desc:"_end_game 是排程 callback，但「沒有人參加」「找不到參加者資料」兩種情況用 return 字串處理，沒有任何地方接收這個回傳值，觀眾看不到遊戲結束的訊息。",
+     fix:"錯誤情況改為 await send_func(訊息)，與得獎訊息走同一條路。",
+     files:["games/gold_rush_game.py:65"]},
+    {cat:"bug", sev:"mid", title:"不成對的引號會讓整句訊息處理中斷",
+     desc:"dispatch_command 用 shlex.split 切割輸入，遇到單獨的引號（例如觀眾只打了一個 \" ）會拋出 ValueError，例外一路傳回 handle_message，該句訊息的獎勵與回覆全部消失。",
+     fix:"以 try/except 包住 shlex.split，失敗時退回 content.split() 的簡單切割。",
+     files:["scripts/command_dispatcher.py:125"]},
+    {cat:"bug", sev:"low", title:"greeter 存在不可達的程式碼",
+     desc:"greet_user 的第一個 return 之後還有一行使用冒險台詞池的 return，永遠不會執行；但冒險台詞仍在啟動時從 Sheets 載入，白白多一次網路呼叫。",
+     fix:"擇一保留：刪除死碼與對應的資料載入，或恢復隨機台詞功能。",
+     files:["scripts/greeter.py:35"]},
+    {cat:"bug", sev:"low", title:"get_tigermeow_char 回傳原始查詢結果而非 Character",
+     desc:"其他查詢方法都會轉成 Character 物件，唯獨這個方法直接回傳 mongo 的 list 結果，呼叫端若比照使用 .gold 等屬性會出錯。",
+     fix:"比照 find_by_user_id 以 from_dict 包裝後回傳。",
+     files:["scripts/role_system.py:130"]},
+    {cat:"bug", sev:"low", title:"validate() 的型別註記與實際回傳不符",
+     desc:"函數註記回傳 str，實際回傳 (bool, str) tuple；失敗分支回傳 False, \"\" 的寫法也容易誤讀。",
+     fix:"更正為 -> tuple[bool, str]，並統一 return (False, \"\") 的寫法。",
+     files:["main.py:38"]},
+    {cat:"perf", sev:"high", title:"同步 HTTP 呼叫阻塞 asyncio 事件圈",
+     desc:"所有 svc_client 走 requests 同步請求，重試間隔 time.sleep(5)、讀取逾時高達 600 秒。這些呼叫發生在 async 訊息處理路徑上，最壞情況整個 Bot（含聊天心跳與排程）會被凍結十分鐘以上。",
+     fix:"將 svc_client 改為 httpx.AsyncClient（專案已相依 httpx），或以 asyncio.to_thread 包裝既有同步呼叫；重試等待改用 asyncio.sleep，並將讀取逾時降到合理秒數。",
+     files:["utils/http_utils.py","svc_client/*"]},
+    {cat:"perf", sev:"high", title:"模組載入階段就發出網路請求",
+     desc:"command_dispatcher、greeter、daily pickers、level_and_job_system、youtube client 都在 import 時呼叫微服務。任何一個服務沒開，Bot 直接在 import 階段 crash；啟動變慢，單元測試也無法在離線環境進行。",
+     fix:"改為 lazy 初始化（首次使用時載入）或集中在 main() 的明確 bootstrap 步驟，並針對個別服務失敗提供降級行為。",
+     files:["scripts/command_dispatcher.py","scripts/greeter.py","svc_client/youtube.py"]},
+    {cat:"perf", sev:"mid", title:"VIP 名額計算撈回整張表再數數",
+     desc:"_active_vip_count 用 find(limit=0) 把所有有效 VIP 文件抓回來再 len()，資料量成長後每次 !vip 都是一次全表傳輸。",
+     fix:"微服務端新增 count 端點（count_documents），Bot 端改呼叫計數。",
+     files:["scripts/vip_system.py:63"]},
+    {cat:"perf", sev:"mid", title:"各式快取缺乏失效機制",
+     desc:"YouTube 歌單只在啟動時抓一次；!吃 / !梗 名為 daily 實際上只在重啟時重置；_last_cmd_ts 與 _last_message 字典無上限成長。長時間運行下資料越來越舊、記憶體緩慢上升。",
+     fix:"建立統一的 TTL 快取工具；在 task_scheduler 排一個每日重置任務清空 food / meme / 招呼名單，並定期修剪冷卻字典。",
+     files:["svc_client/youtube.py","scripts/daily_food_picker.py","scripts/message_controller.py"]},
+    {cat:"perf", sev:"mid", title:"斷線或例外後 Bot 直接死亡，無自動重連",
+     desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。",
+     fix:"外層加 supervisor 迴圈搭配指數退避重連；sweep_expired 改由 task_scheduler 每日執行；區分可重試與致命錯誤。",
+     files:["main.py:179","scripts/vip_system.py"]},
+    {cat:"quality", sev:"mid", title:"_SingletonMeta 重複貼了六份",
+     desc:"六個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改六個地方。",
+     fix:"抽出到 utils/singleton.py 供全專案共用。",
+     files:["svc_client/*","games/*","ai_actions/gpt_chat_session.py"]},
+    {cat:"quality", sev:"mid", title:"twitchio 2.x 已停止維護",
+     desc:"專案同時相依 twitchio 2.x（聊天）與 twitchAPI 4.x（EventSub / Helix）。twitchio 2.x 已 EOL，且兩套件的 token 管理彼此獨立，是刷新不同步問題的根源之一。",
+     fix:"評估升級 twitchio 3.x，或統一改用 twitchAPI 內建的 Chat 功能，收斂為單一相依與單一 token 生命週期。",
+     files:["pyproject.toml","main.py"]},
+    {cat:"quality", sev:"mid", title:"tests/ 目錄為空，核心邏輯無測試保護",
+     desc:"升級經驗計算、指令解析、遊戲規則、轉職表解析等大多是純函數，非常適合單元測試，目前完全沒有覆蓋。",
+     fix:"先為 role_system.gain_exp、command_dispatcher 解析、guess_number / gold_rush 規則補 pytest；搭配前述的 lazy 初始化改造，測試就不需要真的連微服務。",
+     files:["tests/"]},
+    {cat:"quality", sev:"low", title:"指令集無法熱更新",
+     desc:"指令表只在啟動時載入一次，營運修改 Sheets 後必須重啟 Bot 才生效，與「試算表當 CMS」的設計初衷相違。",
+     fix:"新增管理員限定的 !reload 指令重新拉取指令集，或由排程器每 N 分鐘自動重載。",
+     files:["scripts/command_dispatcher.py"]},
+    {cat:"quality", sev:"low", title:"清理死碼與佔位資訊",
+     desc:"error_utils / vault_utils / asset_file_utils 幾乎整檔註解（含另一專案 vivy 的遺留）、tttest.py 為草稿檔、pyproject 的 authors 仍是範本值、main.py 有 finally 後的 unreachable sys.exit。",
+     fix:"刪除或移入 git 歷史保存；補上正確的專案 metadata；統一結束流程。",
+     files:["utils/error_utils.py","utils/vault_utils.py","tttest.py","pyproject.toml"]}
+  ];
+  var SEV_LABEL = {high:"高", mid:"中", low:"低"};
+  var CAT_LABEL = {sec:"安全性", bug:"正確性", perf:"效能與穩定性", quality:"程式品質"};
+  var sugList = document.getElementById("sugList");
+  SUGGESTIONS.forEach(function(s, i){
+    var item = document.createElement("div");
+    item.className = "sug";
+    item.setAttribute("data-cat", s.cat);
+    var filesHtml = s.files.map(function(f){ return "<code>" + f + "</code>"; }).join("");
+    item.innerHTML =
+      '<button class="sug-head" type="button" aria-expanded="false">' +
+        '<span class="sev ' + s.sev + '">' + SEV_LABEL[s.sev] + '</span>' +
+        '<span class="sug-cat">' + CAT_LABEL[s.cat] + '</span>' +
+        '<span class="sug-title">' + s.title + '</span>' +
+        '<span class="sug-arrow">▶</span>' +
+      '</button>' +
+      '<div class="sug-body">' +
+        '<p>' + s.desc + '</p>' +
+        '<div class="fix">' + s.fix + '</div>' +
+        '<div class="files">' + filesHtml + '</div>' +
+      '</div>';
+    var head = item.querySelector(".sug-head");
+    head.addEventListener("click", function(){
+      var open = item.classList.toggle("open");
+      head.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    sugList.appendChild(item);
+  });
+
+  /* 篩選 chips 與數量 */
+  var chips = document.querySelectorAll("#sugToolbar .chip");
+  chips.forEach(function(chip){
+    var cat = chip.getAttribute("data-cat");
+    var n = (cat === "all") ? SUGGESTIONS.length
+          : SUGGESTIONS.filter(function(s){ return s.cat === cat; }).length;
+    chip.querySelector(".cnt").textContent = n;
+    chip.addEventListener("click", function(){
+      chips.forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+      document.querySelectorAll(".sug").forEach(function(item){
+        var show = (cat === "all") || (item.getAttribute("data-cat") === cat);
+        item.style.display = show ? "" : "none";
+      });
+    });
+  });
+
+})();
+</script>
+</body>
+</html>

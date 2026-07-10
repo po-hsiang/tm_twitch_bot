@@ -1,0 +1,18 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ===== 虛擬環境 =====
+.venv/
+venv/
+
+# ===== 機敏資訊（絕不進版控）=====
+.env
+src/tm_twitch_bot/config/config_common.yaml
+
+# ===== IDE / 系統 =====
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

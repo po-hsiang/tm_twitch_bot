@@ -1,0 +1,214 @@
+from tm_twitch_bot.svc_client.mongo_atlas import mongo_atlas_client
+from tm_twitch_bot.svc_client import twitch_vips_api
+from tm_twitch_bot.scripts.role_system import Character
+from tm_twitch_bot.utils.yaml_utils import config
+from tm_twitch_bot.utils.log_utils import logger
+from datetime import date, datetime, timedelta
+from dataclasses import dataclass
+from typing import Optional
+import threading
+
+
+@dataclass(frozen=True)
+class VipConfig:
+    enabled: bool
+    gold_cost: int
+    vip_cap: int
+    days_per_redeem: int
+
+
+def _load_vip_config() -> VipConfig:
+    c = config.get("vip_system", {})
+    return VipConfig(
+        enabled=c.get("enabled"),
+        gold_cost=c.get("gold_cost"),
+        vip_cap=c.get("vip_cap"),
+        days_per_redeem=c.get("days_per_redeem"),
+    )
+
+
+class _SingletonMeta(type):
+    _instances: dict[type, "VipSystem"] = {}
+    _lock = threading.Lock()
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            with cls._lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
+class VipSystem(metaclass=_SingletonMeta):
+    def __init__(self):
+        self.vips_col_name = "tm_twitch_vips"
+        self.cfg = _load_vip_config()
+        self._redeem_lock = threading.Lock()
+
+    def set_api_context(self, client_id: str, broadcaster_id: str, token_getter):
+        self._client_id = client_id
+        self._broadcaster_id = broadcaster_id
+        self._token_getter = token_getter
+
+    @staticmethod
+    def _today_iso() -> str:
+        return date.today().isoformat()
+
+    def _get_vip_doc(self, user_id: str) -> Optional[dict]:
+        docs = mongo_atlas_client.find(
+            self.vips_col_name, filter={"user_id": user_id}, limit=1
+        )
+        return docs[0] if docs else None
+
+    def _active_vip_count(self) -> int:
+        docs = mongo_atlas_client.find(
+            self.vips_col_name,
+            filter={"active": True, "expire_date": {"$gte": self._today_iso()}},
+            projection={"_id": 1},
+            limit=0,
+        )
+        return len(docs or [])
+
+    def redeem_vip(self, char: Character) -> str:
+
+        if not self.cfg.enabled:
+            return "⚠️ VIP 兌換功能未啟用。"
+
+        user_id = getattr(char, "user_id", None)
+        display_name = getattr(char, "display_names")[-1]
+        username = getattr(char, "usernames")[-1]
+
+        with self._redeem_lock:
+            today_iso = self._today_iso()
+            vip_doc = self._get_vip_doc(user_id)
+
+            if (
+                vip_doc
+                and vip_doc.get("active")  # 已經是 VIP
+                and vip_doc.get("expire_date") >= today_iso  # 還沒過期
+            ):
+                return f"⚠️ 您已是 VIP，過期後才能再次兌換。過期日：{vip_doc['expire_date']}！"
+
+            # 剩餘 VIP 名額檢查
+            if self._active_vip_count() >= self.cfg.vip_cap:
+                return f"⚠️ VIP 名額已滿，上限：{self.cfg.vip_cap}。"
+
+            # 金幣檢查
+            cost = self.cfg.gold_cost
+            current_gold = int(char.gold)
+            if current_gold < cost:
+                return f"⚠️ Gold 不足，需要 {cost}，您目前只有 {current_gold}。"
+
+            # 固定效期 31 天（僅存 YYYY-MM-DD）
+            expire_iso = (
+                date.today() + timedelta(days=self.cfg.days_per_redeem)
+            ).isoformat()
+
+            # 透過 API 設定 VIP
+            token = self._token_getter()
+            is_success, api_result = twitch_vips_api.add_channel_vip(
+                token, self._client_id, self._broadcaster_id, user_id
+            )
+            if not is_success:  # 新增失敗
+                return f"VIP 新增失敗，原因為 {api_result.get("message")}"
+            logger.info(f"已經新增 {display_name} 的 VIP")
+
+            # 新增成功，扣錢
+            char.gold -= cost
+
+            # 更新 tm_twitch_vips 表
+            mongo_atlas_client.update(
+                self.vips_col_name,
+                update={
+                    "$set": {
+                        "user_id": user_id,
+                        "username": username,
+                        "display_name": display_name,
+                        "active": True,
+                        "expire_date": expire_iso,  # YYYY-MM-DD
+                        "updated_at": datetime.now().isoformat(),
+                    },
+                    "$inc": {"redeemed_count": 1},
+                    "$push": {
+                        "history": {
+                            "ts": datetime.now().isoformat(),
+                            "op": "redeem",
+                            "days": self.cfg.days_per_redeem,
+                            "gold_cost": cost,
+                            "expire_date": expire_iso,
+                        }
+                    },
+                },
+                filter={"user_id": user_id},
+                upsert=True,
+                many=False,
+            )
+            success_msg = f"🎊 VIP 兌換成功！原 {current_gold} Gold，兌換後 {current_gold - cost}。過期日：{expire_iso}！"
+            return success_msg
+
+    def sweep_expired(self):
+
+        if not self.cfg.enabled:
+            logger.warning("VIP 兌換功能未啟用，略過過期掃描")
+
+        today = self._today_iso()
+        expired_docs = (
+            mongo_atlas_client.find(
+                self.vips_col_name,
+                filter={"active": True, "expire_date": {"$lt": today}},
+                projection={
+                    "user_id": 1,
+                    "username": 1,
+                    "display_name": 1,
+                    "expire_date": 1,
+                },
+                limit=0,
+            )
+            or []
+        )
+        logger.warning(f"哪些人要移除: {expired_docs}")
+
+        for doc in expired_docs:
+
+            user_id = doc.get("user_id")
+            display_name = doc.get("display_name")
+            token = self._token_getter()
+            is_success, api_result = twitch_vips_api.remove_channel_vip(
+                token, self._client_id, self._broadcaster_id, user_id
+            )
+            if not is_success:  # 設定失敗
+                logger.error(f"VIP 移除失敗，原因為 {api_result.get("message")}")
+            logger.info(f"已經移除 {display_name} 的 VIP")
+
+            mongo_atlas_client.update(
+                self.vips_col_name,
+                update={
+                    "$set": {
+                        "active": False,
+                        "updated_at": datetime.now().isoformat(),
+                    },
+                    "$push": {
+                        "history": {
+                            "ts": datetime.now().isoformat(),
+                            "op": "revoke",
+                            "reason": "expire_sweep",
+                        }
+                    },
+                },
+                filter={"user_id": doc["user_id"]},
+                upsert=False,
+                many=False,
+            )
+
+
+vip_system = VipSystem()
+
+
+def redeem(*args, **kwargs):
+    char = kwargs.get("char")
+    return vip_system.redeem_vip(char)
+
+
+if __name__ == "__main__":
+    print(datetime.now().isoformat())
+    print(date.today().isoformat())
