@@ -46,7 +46,7 @@ async def handle_message(message):
     _last_message[user_id] = content
 
     # 第一次講話都會打招呼，獲得 3 點經驗值、3 金幣
-    greet = greet_user(user_id)
+    greet = await greet_user(user_id)
     if greet:
         await message.channel.send(f"@{display_name} {greet}")
         await char.gain_exp(3, message.channel.send)
