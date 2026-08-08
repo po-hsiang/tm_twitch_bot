@@ -337,4 +337,5 @@ uv run pytest
 - **非同步 HTTP**：所有對微服務與 Twitch Helix 的請求都走共用的 `httpx.AsyncClient`，重試等待不會阻塞事件圈。
 - **指令集熱更新限制**：指令集於啟動時載入一次，修改試算表後需重啟 Bot 才會生效。
 - **twitchio 版本相依**：`main.py` 的 token 同步機制寫入了 twitchio 的私有屬性（`_http.token`、`_connection._token`）。套件已釘選 `twitchio>=2.10,<3`，升級時務必一併驗證。
+- **待實測**：忠誠點數兌換偶爾收不到其他使用者事件的問題，已修正 EventSub 物件被 GC 回收的疑似成因（CODE_REVIEW P0-3），但**尚未於正式頻道驗證**，上線後請實際請他人兌換一次確認。
 - **待處理缺陷**：完整清單與優先序見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md)。

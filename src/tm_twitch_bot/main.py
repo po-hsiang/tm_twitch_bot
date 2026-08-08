@@ -198,7 +198,10 @@ class MyBot(commands.Bot):
         await handle_message(message)
 
     async def on_points(self, subscription_and_event):
-        # TODO 目前有其他人兌換而收不到事件的 Bug
+        # TODO 待實測：過去有「其他人兌換收不到事件」的 Bug。
+        # 已修正 EventSubWebsocket 沒有強參考、可能被 GC 回收的問題（見 CODE_REVIEW P0-3），
+        # 但尚未於正式頻道實際驗證。若仍收不到，下一個懷疑對象是訂閱所用 token 的
+        # scope 與 broadcaster_user_id 是否相符。
         event = subscription_and_event.event
         user_name = event.user_name
 
