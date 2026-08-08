@@ -5,6 +5,7 @@ from tm_twitch_bot.utils.log_utils import logger
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field, asdict
 import random
+import re
 
 rpg_parameter = config["rpg_parameter"]
 
@@ -101,9 +102,14 @@ class Character:
 
         # 先嘗試大小寫不敏感的精確比對
         # ^ 與 $ 代表整段比對；'i' flag 代表 ignore-case
+        #
+        # name 是觀眾原始輸入，一定要 escape：
+        #   未 escape 時 `!pk .*` 會匹配到隨機玩家，
+        #   而 `!pk (a+)+$` 這種 catastrophic backtracking 能把 Atlas 的 CPU 打滿。
+        escaped_name = re.escape(name)
         regex_filter = {
             # 先比對 display_names 看看
-            "display_names": {"$regex": f"^{name}$", "$options": "i"}
+            "display_names": {"$regex": f"^{escaped_name}$", "$options": "i"}
         }
 
         doc = await mongo_atlas_client.find(
@@ -115,7 +121,7 @@ class Character:
         if not doc:
             username_filter = {
                 # 再比對 usernames 看看
-                "usernames": {"$regex": f"^{name}$", "$options": "i"}
+                "usernames": {"$regex": f"^{escaped_name}$", "$options": "i"}
             }
             doc = await mongo_atlas_client.find(
                 "tm_twitch_users",
