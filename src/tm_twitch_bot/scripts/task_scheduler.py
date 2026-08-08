@@ -1,7 +1,9 @@
 from tm_twitch_bot.games.guess_number_game import guess_number_game
 from tm_twitch_bot.games.gold_rush_game import gold_rush_game
+from tm_twitch_bot.utils.log_utils import logger
 from typing import Iterable, Callable, Awaitable, Any
 from dataclasses import dataclass
+from functools import partial
 import datetime as dt
 import asyncio
 import inspect
@@ -24,7 +26,10 @@ class JobHandler:
 
 class TaskScheduler:
     def __init__(self, *, loop: asyncio.AbstractEventLoop | None = None):
-        self.loop = loop or asyncio.get_event_loop()
+        # 必須在事件圈內建構。原本用 get_event_loop()，它在無執行中迴圈時
+        # 只會發 DeprecationWarning 再拋錯，Python 3.14 起會直接拋錯；
+        # 改用 get_running_loop() 讓誤用當場就看得出來。
+        self.loop = loop or asyncio.get_running_loop()
         self._jobs: list[JobHandler] = []
 
     # ---------- Public API ---------- #
@@ -40,11 +45,11 @@ class TaskScheduler:
         kwargs: dict[str, Any] | None = None,
     ) -> JobHandler:
         funcs_list = list(funcs) if isinstance(funcs, Iterable) else [funcs]
-        coro = self._interval_worker(funcs_list, seconds, run_now, args, kwargs or {})
-        task = self.loop.create_task(coro, name=label or f"interval_{seconds}s")
-        handle = JobHandler(task, label)
-        self._jobs.append(handle)
-        return handle
+        name = label or f"interval_{seconds}s"
+        coro = self._interval_worker(
+            funcs_list, seconds, run_now, args, kwargs or {}, name
+        )
+        return self._spawn(coro, name, label)
 
     def add_daily_job(
         self,
@@ -57,13 +62,35 @@ class TaskScheduler:
     ) -> JobHandler:
         funcs_list = list(funcs) if isinstance(funcs, Iterable) else [funcs]
         hour, minute = map(int, time_str.split(":"))
-        coro = self._daily_worker(funcs_list, hour, minute, args, kwargs or {})
-        task = self.loop.create_task(coro, name=label or f"daily_{time_str}")
+        name = label or f"daily_{time_str}"
+        coro = self._daily_worker(funcs_list, hour, minute, args, kwargs or {}, name)
+        return self._spawn(coro, name, label)
+
+    # ---------- Internal Workers ---------- #
+
+    def _spawn(self, coro, name: str, label: str | None) -> JobHandler:
+        task = self.loop.create_task(coro, name=name)
+        task.add_done_callback(partial(self._on_job_finished, name))
         handle = JobHandler(task, label)
         self._jobs.append(handle)
         return handle
 
-    # ---------- Internal Workers ---------- #
+    @staticmethod
+    def _on_job_finished(name: str, task: asyncio.Task) -> None:
+        """排程任務正常情況下永遠不會結束；真的結束了一定要留下痕跡。
+
+        過去沒有任何人 await 這些 task，例外會被靜默吞掉，
+        只在直譯器結束時才印出 "Task exception was never retrieved" ——
+        排程默默死掉不會有人察覺。
+        """
+        if task.cancelled():
+            logger.info(f"排程任務 {name} 已取消")
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error(f"排程任務 {name} 意外終止: {type(exc).__name__}: {exc}")
+        else:
+            logger.warning(f"排程任務 {name} 意外結束（排程迴圈不應自行退出）")
 
     async def _interval_worker(
         self,
@@ -72,12 +99,13 @@ class TaskScheduler:
         run_now: bool,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        name: str,
     ):
         if run_now:
-            await self._execute(funcs, args, kwargs)
+            await self._execute_safely(funcs, args, kwargs, name)
         while True:
             await asyncio.sleep(seconds)
-            await self._execute(funcs, args, kwargs)
+            await self._execute_safely(funcs, args, kwargs, name)
 
     async def _daily_worker(
         self,
@@ -86,6 +114,7 @@ class TaskScheduler:
         minute: int,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
+        name: str,
     ):
         while True:
             now = dt.datetime.now()
@@ -93,7 +122,26 @@ class TaskScheduler:
             if next_run <= now:
                 next_run += dt.timedelta(days=1)
             await asyncio.sleep((next_run - now).total_seconds())
+            await self._execute_safely(funcs, args, kwargs, name)
+
+    async def _execute_safely(
+        self,
+        funcs: list[AsyncFunc],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        name: str,
+    ):
+        """單次執行失敗不能拖垮整條排程，否則之後永遠不會再觸發。"""
+        try:
             await self._execute(funcs, args, kwargs)
+        except asyncio.CancelledError:
+            raise  # 取消必須往外傳，不能被當成一般錯誤吃掉
+        except Exception as e:
+            logger.error(
+                f"排程任務 {name} 本次執行失敗，下一輪仍會繼續: "
+                f"{type(e).__name__}: {e}",
+                exc_info=True,
+            )
 
     async def _execute(
         self,
