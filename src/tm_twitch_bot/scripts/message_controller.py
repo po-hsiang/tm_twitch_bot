@@ -24,45 +24,66 @@ async def handle_message(message):
     if user_id in config["bot_user_id"]:
         return
 
-    # 取得角色 (若沒有則創角)
-    char = await Character.load_or_create(
-        user_id=user_id, username=username, display_name=display_name
-    )
+    char = None
+    try:
+        # 取得角色 (若沒有則創角)
+        char = await Character.load_or_create(
+            user_id=user_id, username=username, display_name=display_name
+        )
 
-    # 增加真實聊天次數 (不論洗不洗頻都加一)
-    await add_total_msgs_count(user_id)
+        # 增加真實聊天次數 (不論洗不洗頻都加一)
+        await add_total_msgs_count(user_id)
 
-    # 防 3 秒內輸入
-    now = monotonic()
-    if now - _last_cmd_ts.get(user_id, 0.0) < CHAT_CD:
-        logger.warning(f"抓到 {display_name} 還在冷卻時間就講話")
+        # 防 3 秒內輸入
+        now = monotonic()
+        if now - _last_cmd_ts.get(user_id, 0.0) < CHAT_CD:
+            logger.warning(f"抓到 {display_name} 還在冷卻時間就講話")
+            return
+        _last_cmd_ts[user_id] = now
+
+        # 防洗一樣的話
+        if _last_message.get(user_id) == content:
+            logger.warning(f"抓到 {display_name} 洗頻")
+            return
+        _last_message[user_id] = content
+
+        # 第一次講話都會打招呼，獲得 3 點經驗值、3 金幣
+        greet = await greet_user(user_id)
+        if greet:
+            await message.channel.send(f"@{display_name} {greet}")
+            await char.gain_exp(3, message.channel.send)
+            char.gain_gold(3)
+
+        # 打字獲得 1 點經驗值、1 金幣
+        await char.gain_exp(rpg_parameter["default_gained_exp"], message.channel.send)
+        char.gain_gold(rpg_parameter["default_gainer_gold"])
+
+        # 查看指令集
+        cmd_reply = await dispatch_command(content, char=char, message=message)
+        if cmd_reply:
+            await message.channel.send(f"@{display_name} {cmd_reply}")
+
+    except Exception as e:
+        # 任何一步失敗（微服務暫時不可用、Twitch 發言被拒…）都不能讓角色異動蒸發，
+        # 底下的 finally 仍會把已經到手的經驗與金幣存回去。
+        logger.error(
+            f"處理 {display_name}（{user_id}）的訊息時發生未預期錯誤: "
+            f"{type(e).__name__}: {e}",
+            exc_info=True,
+        )
+    finally:
+        # 存檔。只有真的異動過才寫，冷卻/洗頻被擋下的訊息不必白跑一趟 DB。
+        await _save_quietly(char, display_name)
+
+
+async def _save_quietly(char, display_name: str) -> None:
+    """存檔失敗只記錄、不往外拋，避免蓋掉原本真正的錯誤。"""
+    if char is None or not char.is_dirty:
         return
-    _last_cmd_ts[user_id] = now
-
-    # 防洗一樣的話
-    if _last_message.get(user_id) == content:
-        logger.warning(f"抓到 {display_name} 洗頻")
-        return
-    _last_message[user_id] = content
-
-    # 第一次講話都會打招呼，獲得 3 點經驗值、3 金幣
-    greet = await greet_user(user_id)
-    if greet:
-        await message.channel.send(f"@{display_name} {greet}")
-        await char.gain_exp(3, message.channel.send)
-        char.gain_gold(3)
-
-    # 打字獲得 1 點經驗值、1 金幣
-    await char.gain_exp(rpg_parameter["default_gained_exp"], message.channel.send)
-    char.gain_gold(rpg_parameter["default_gainer_gold"])
-
-    # 查看指令集
-    cmd_reply = await dispatch_command(content, char=char, message=message)
-    if cmd_reply:
-        await message.channel.send(f"@{display_name} {cmd_reply}")
-
-    # 存檔
-    await char.save()
+    try:
+        await char.save()
+    except Exception as e:
+        logger.error(f"{display_name} 的角色存檔失敗，本次異動已遺失: {e}")
 
 
 async def add_total_msgs_count(user_id):
