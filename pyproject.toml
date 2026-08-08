@@ -23,3 +23,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tm_twitch_bot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 測試全部是 async，開 auto 模式就不必每個函式都掛 @pytest.mark.asyncio
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
