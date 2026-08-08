@@ -52,10 +52,10 @@ class GoldRushGame(metaclass=_SingletonMeta):
             and self._entries[user_id] + amount > self.amount_max
         ):
             return f"⚠️ 一桶金的投入上限為 {self.amount_max}，您目前已投 {self._entries[user_id]}"
-        elif amount > char.gold:
-            return f"⚠️ 餘額不足 {amount}，您目前只有 {char.gold} Gold"
 
-        char.gold -= amount
+        # 先扣款再記帳。扣款失敗就直接退出，避免出現「錢沒扣但注下了」
+        if not char.spend_gold(amount):
+            return f"⚠️ 餘額不足 {amount}，您目前只有 {char.gold} Gold"
 
         self._entries[user_id] = self._entries.get(user_id, 0) + amount
         total_gold = sum(self._entries.values())
@@ -73,7 +73,7 @@ class GoldRushGame(metaclass=_SingletonMeta):
             return "⚠️ 找不到參加者的資料，怪怪的"
         total_reward = sum(weights)
         original_gold = char.gold
-        char.gold += total_reward
+        char.gain_gold(total_reward)
         await char.save()
         winner = char.display_names[-1]
         final_result = (

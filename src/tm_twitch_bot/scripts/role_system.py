@@ -32,6 +32,22 @@ class Character:
         default_factory=lambda: DEFAULT_ATTRIBUTES.copy()
     )
 
+    def __post_init__(self):
+        # 刻意「不」宣告成 dataclass field，asdict() 才不會把它一起寫進 MongoDB。
+        # 用途：讓 message_controller 知道這次訊息有沒有改到角色，
+        # 沒改到就不用白跑一次存檔，改到了就一定要存（即使中途出錯）。
+        self._dirty = False
+
+    # ---------- 髒資料追蹤 ----------
+
+    @property
+    def is_dirty(self) -> bool:
+        """自上次存檔以來是否有異動。"""
+        return self._dirty
+
+    def mark_dirty(self) -> None:
+        self._dirty = True
+
     # ---------- 物件與 dict 轉換 ----------
 
     def to_dict(self) -> dict:
@@ -142,8 +158,10 @@ class Character:
     def _maybe_append_name(self, username: str, display_name: str):
         if username and username not in self.usernames:
             self.usernames.append(username)
+            self._dirty = True
         if display_name and display_name not in self.display_names:
             self.display_names.append(display_name)
+            self._dirty = True
 
     async def save(self):
         await mongo_atlas_client.update(
@@ -165,11 +183,28 @@ class Character:
             filter={"user_id": self.user_id},
             many=False,
         )
+        self._dirty = False
 
     # ---------- RPG 行為 ----------
 
     def gain_gold(self, gained: int):
         self.gold += gained
+        self._dirty = True
+
+    def spend_gold(self, cost: int) -> bool:
+        """扣款。餘額不足時回傳 False 且完全不改變狀態。
+
+        所有扣款都必須走這裡，不要在外部直接寫 char.gold -= x：
+        統一入口才能保證「檢查餘額」與「實際扣款」是同一步，
+        也才能正確標記髒資料、讓 message_controller 一定會存檔。
+        """
+        if cost < 0:
+            raise ValueError(f"扣款金額不可為負數：{cost}")
+        if self.gold < cost:
+            return False
+        self.gold -= cost
+        self._dirty = True
+        return True
 
     async def gain_exp(self, gained_exp: int, send_func):
         total_exp = self.exp + gained_exp
@@ -177,6 +212,7 @@ class Character:
             total_exp -= self._exp_to_next_level()
             await self._on_level_up(send_func)
         self.exp = total_exp
+        self._dirty = True
 
     def _exp_to_next_level(self) -> int:
         return self.level * rpg_parameter["exp_req_multiple"]
@@ -185,6 +221,7 @@ class Character:
         self.level += 1
         rand_attr = random.choice(list(DEFAULT_ATTRIBUTES.keys()))
         self.attributes[rand_attr] += 1
+        self._dirty = True
         await send_func(
             f"恭喜 @{self.display_names[-1]} 升到 {self.level} 等，提升 {rand_attr} 1 點！"
         )
@@ -197,6 +234,7 @@ class Character:
         old_job = self.job
         new_job = random.choice(cfg["jobs"])
         self.job = new_job
+        self._dirty = True
         await send_func(
             f"恭喜 @{self.display_names[-1]} 從【{old_job}】{cfg['stage']}為【{self.job}】！"
         )

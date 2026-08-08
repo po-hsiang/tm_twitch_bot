@@ -94,10 +94,12 @@ class VipSystem(metaclass=_SingletonMeta):
             if await self._active_vip_count() >= self.cfg.vip_cap:
                 return f"⚠️ VIP 名額已滿，上限：{self.cfg.vip_cap}。"
 
-            # 金幣檢查
+            # 金幣檢查與扣款是同一步。
+            # 先扣再打 API：避免「VIP 已授予但程式中途掛掉、錢卻沒扣」的白吃白喝，
+            # API 失敗時再退款回去。
             cost = self.cfg.gold_cost
             current_gold = int(char.gold)
-            if current_gold < cost:
+            if not char.spend_gold(cost):
                 return f"⚠️ Gold 不足，需要 {cost}，您目前只有 {current_gold}。"
 
             # 固定效期 31 天（僅存 YYYY-MM-DD）
@@ -107,43 +109,63 @@ class VipSystem(metaclass=_SingletonMeta):
 
             # 透過 API 設定 VIP
             token = self._token_getter()
-            is_success, api_result = await twitch_vips_api.add_channel_vip(
-                token, self._client_id, self._broadcaster_id, user_id
-            )
+            try:
+                is_success, api_result = await twitch_vips_api.add_channel_vip(
+                    token, self._client_id, self._broadcaster_id, user_id
+                )
+            except Exception as e:
+                char.gain_gold(cost)  # 退款
+                logger.error(f"呼叫 Twitch VIP API 失敗，已退還 {display_name} {cost} Gold: {e}")
+                return "⚠️ VIP 兌換服務暫時無法使用，已退還您的 Gold，請稍後再試。"
+
             if not is_success:  # 新增失敗
+                char.gain_gold(cost)  # 退款
+                logger.warning(f"VIP 新增失敗，已退還 {display_name} {cost} Gold")
                 return f"VIP 新增失敗，原因為 {api_result.get('message')}"
             logger.info(f"已經新增 {display_name} 的 VIP")
 
-            # 新增成功，扣錢
-            char.gold -= cost
+            # VIP 已實際授予，立刻把扣款落地，縮短「拿到 VIP 卻還沒付錢」的視窗。
+            # 失敗也不中斷：char 仍是髒的，message_controller 的 finally 會再存一次。
+            try:
+                await char.save()
+            except Exception as e:
+                logger.error(f"VIP 扣款存檔失敗（稍後由訊息流程重試）: {e}")
 
             # 更新 tm_twitch_vips 表
-            await mongo_atlas_client.update(
-                self.vips_col_name,
-                update={
-                    "$set": {
-                        "user_id": user_id,
-                        "username": username,
-                        "display_name": display_name,
-                        "active": True,
-                        "expire_date": expire_iso,  # YYYY-MM-DD
-                        "updated_at": datetime.now().isoformat(),
+            try:
+                await mongo_atlas_client.update(
+                    self.vips_col_name,
+                    update={
+                        "$set": {
+                            "user_id": user_id,
+                            "username": username,
+                            "display_name": display_name,
+                            "active": True,
+                            "expire_date": expire_iso,  # YYYY-MM-DD
+                            "updated_at": datetime.now().isoformat(),
+                        },
+                        "$inc": {"redeemed_count": 1},
+                        "$push": {
+                            "history": {
+                                "ts": datetime.now().isoformat(),
+                                "op": "redeem",
+                                "days": self.cfg.days_per_redeem,
+                                "gold_cost": cost,
+                                "expire_date": expire_iso,
+                            }
+                        },
                     },
-                    "$inc": {"redeemed_count": 1},
-                    "$push": {
-                        "history": {
-                            "ts": datetime.now().isoformat(),
-                            "op": "redeem",
-                            "days": self.cfg.days_per_redeem,
-                            "gold_cost": cost,
-                            "expire_date": expire_iso,
-                        }
-                    },
-                },
-                filter={"user_id": user_id},
-                upsert=True,
-                many=False,
-            )
+                    filter={"user_id": user_id},
+                    upsert=True,
+                    many=False,
+                )
+            except Exception as e:
+                # VIP 已授予、錢也扣了，但沒有到期紀錄 → 過期掃描不會知道要移除他
+                logger.error(
+                    f"⚠️ VIP 兌換紀錄寫入失敗，{display_name}（{user_id}）的 VIP "
+                    f"已授予但無到期紀錄（應於 {expire_iso} 到期），需要人工補登：{e}"
+                )
+
             success_msg = f"🎊 VIP 兌換成功！原 {current_gold} Gold，兌換後 {current_gold - cost}。過期日：{expire_iso}！"
             return success_msg
 

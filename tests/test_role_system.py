@@ -7,6 +7,7 @@ import pytest
 
 from tm_twitch_bot.scripts import level_and_job_system
 from tm_twitch_bot.scripts.role_system import Character
+from tm_twitch_bot.svc_client.mongo_atlas import mongo_atlas_client
 from tm_twitch_bot.utils.yaml_utils import config
 
 EXP_MULTIPLE = config["rpg_parameter"]["exp_req_multiple"]  # 升到下一級 = 目前等級 * 此值
@@ -89,6 +90,102 @@ def test_gain_gold_is_additive(char):
     char.gain_gold(3)
     char.gain_gold(7)
     assert char.gold == 10
+
+
+# ===== 扣款（所有金幣支出的唯一入口） =====
+
+
+def test_spend_gold_deducts_when_affordable(char):
+    char.gain_gold(100)
+
+    assert char.spend_gold(30) is True
+    assert char.gold == 70
+
+
+def test_spend_gold_allows_spending_exact_balance(char):
+    char.gain_gold(20)
+
+    assert char.spend_gold(20) is True
+    assert char.gold == 0
+
+
+def test_spend_gold_leaves_state_untouched_when_short(char):
+    char.gain_gold(10)
+
+    assert char.spend_gold(11) is False
+    assert char.gold == 10  # 不能出現扣一半的中間狀態
+
+
+def test_spend_gold_rejects_negative_cost(char):
+    with pytest.raises(ValueError):
+        char.spend_gold(-5)
+
+
+# ===== 髒資料追蹤（決定 message_controller 要不要存檔） =====
+
+
+def test_freshly_loaded_character_is_clean():
+    restored = Character.from_dict({"user_id": "u9"})
+
+    assert restored.is_dirty is False
+
+
+def test_gold_changes_mark_dirty(char):
+    char.gain_gold(1)
+    assert char.is_dirty is True
+
+
+def test_failed_spend_does_not_mark_dirty(char):
+    char.spend_gold(999)
+    assert char.is_dirty is False
+
+
+async def test_exp_gain_marks_dirty(char, collect_sends):
+    send, _ = collect_sends
+    await char.gain_exp(1, send)
+
+    assert char.is_dirty is True
+
+
+def test_name_append_marks_dirty_only_when_new(char):
+    char._maybe_append_name("tester", "測試員")  # 已存在
+    assert char.is_dirty is False
+
+    char._maybe_append_name("tester2", "測試員")  # 新的 username
+    assert char.is_dirty is True
+
+
+def test_dirty_flag_is_never_written_to_the_database(char):
+    char.gain_gold(1)
+
+    assert "_dirty" not in char.to_dict()
+
+
+async def test_save_clears_the_dirty_flag(char, monkeypatch):
+    async def fake_update(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(mongo_atlas_client, "update", fake_update)
+    char.gain_gold(1)
+
+    await char.save()
+
+    assert char.is_dirty is False
+
+
+async def test_dirty_flag_survives_a_failed_save(char, monkeypatch):
+    """存檔失敗時必須維持髒狀態，才有機會被重試。"""
+
+    async def failing_update(*args, **kwargs):
+        raise RuntimeError("寫入失敗")
+
+    monkeypatch.setattr(mongo_atlas_client, "update", failing_update)
+    char.gain_gold(1)
+
+    with pytest.raises(RuntimeError):
+        await char.save()
+
+    assert char.is_dirty is True
 
 
 def test_round_trip_through_dict(char):

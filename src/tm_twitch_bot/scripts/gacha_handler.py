@@ -12,10 +12,9 @@ PULL_COST = 20
 
 def gacha(*args, **kwargs) -> str:
     char = kwargs.get("char")
-    if char.gold < PULL_COST:
+    # 統一先扣錢；餘額不足時 spend_gold 不會改變任何狀態
+    if not char.spend_gold(PULL_COST):
         return f"不足 {PULL_COST} Gold 無法抽卡，目前才 {char.gold} Gold 💸 "
-
-    char.gold -= PULL_COST  # 統一先扣錢
 
     pulls = []
     reward = 0

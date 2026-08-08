@@ -66,7 +66,11 @@ class GuessNumberGame(metaclass=_SingletonMeta):
         if not (self.low < number < self.high):
             return f"⚠️ 要猜 {self.low} ~ {self.high} 之間的數字喔！"
 
-        char.gold -= self.GUESS_FEE
+        # 上面已先做過餘額檢查，這裡是實際扣款；仍保留防呆，
+        # 因為兩次檢查之間 char.gold 可能已被同一則訊息的其他指令改動
+        if not char.spend_gold(self.GUESS_FEE):
+            return f"⚠️ 餘額不足 {self.GUESS_FEE}，您目前只有 {char.gold} Gold"
+
         self.prize_pool += self.PRIZE_INC_PER_GUESS
         self.guess_counter += 1
 
@@ -81,7 +85,7 @@ class GuessNumberGame(metaclass=_SingletonMeta):
             base_reward = self.TIER_REWARDS.get(self.guess_counter, self.LOWEST_REWARD)
             total_reward = base_reward + self.prize_pool
             original_gold = char.gold
-            char.gold += total_reward
+            char.gain_gold(total_reward)
             return (
                 f"🎊 恭喜您在第 {self.guess_counter} 次猜中 {number}！"
                 f"基礎獎 {base_reward} + 彩金池 {self.prize_pool} = {total_reward} Gold！"
