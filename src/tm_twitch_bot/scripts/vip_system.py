@@ -107,9 +107,12 @@ class VipSystem(metaclass=_SingletonMeta):
                 date.today() + timedelta(days=self.cfg.days_per_redeem)
             ).isoformat()
 
-            # 透過 API 設定 VIP
-            token = self._token_getter()
+            # 透過 API 設定 VIP。
+            # 取 token 也要包在 try 內：set_api_context() 尚未被呼叫時
+            # self._token_getter 根本不存在，若讓它在 try 外拋 AttributeError，
+            # 就會變成「錢扣了、VIP 沒給、也沒退款」。
             try:
+                token = self._token_getter()
                 is_success, api_result = await twitch_vips_api.add_channel_vip(
                     token, self._client_id, self._broadcaster_id, user_id
                 )
