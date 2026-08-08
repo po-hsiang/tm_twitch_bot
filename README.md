@@ -4,6 +4,13 @@
 
 > 指令的觸發詞與回覆內容集中維護在 [Google Sheets 指令集](https://docs.google.com/spreadsheets/d/1-UQ7KBWK09ZCHZKFycymk04BaB5oW6DJ0vi2N7x6qQE/edit?usp=sharing)，不需改程式即可新增／調整指令。
 
+### 📄 相關文件
+
+| 文件 | 內容 |
+|---|---|
+| [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) | 程式碼健檢報告：缺陷清單、優先序與處置狀態 |
+| [`docs/project_report.html`](docs/project_report.html) | 互動式專案報告：架構圖、訊息流程圖、指令總表 |
+
 ---
 
 ## 目錄
@@ -16,6 +23,7 @@
 - [安裝與執行](#安裝與執行)
 - [設定檔說明](#設定檔說明)
 - [資料儲存](#資料儲存)
+- [測試](#測試)
 - [注意事項](#注意事項)
 
 ---
@@ -100,6 +108,9 @@ tm_twitch_bot/
 ├── uv.lock
 ├── .env                        # 機敏資訊（token / secret / api key），不進版控
 ├── .env.example                # .env 範本
+├── docs/
+│   ├── CODE_REVIEW.md          # 程式碼健檢報告（缺陷清單與處置狀態）
+│   └── project_report.html     # 互動式專案報告（架構圖／流程圖／指令表）
 ├── src/tm_twitch_bot/
 │   ├── main.py                 # 進入點：Token 驗證/刷新、bootstrap、Bot 啟動
 │   ├── config/
@@ -138,7 +149,12 @@ tm_twitch_bot/
 │       ├── log_utils.py            # 彩色 Logger
 │       ├── probability_utils.py    # 加權隨機
 │       └── ...
-└── tests/                      # （目前尚無測試）
+└── tests/                      # pytest 測試（全離線，不需啟動微服務）
+    ├── conftest.py                 # 假環境變數與共用 fixture
+    ├── test_command_dispatcher.py
+    ├── test_greeter.py
+    ├── test_role_system.py
+    └── test_level_and_job_system.py
 ```
 
 ---
@@ -302,11 +318,23 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 
 ---
 
+## 測試
+
+```bash
+uv run pytest
+```
+
+測試全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數。
+
+目前覆蓋 `command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級與轉職邊界）、`level_and_job_system`（轉職表解析）。尚未覆蓋的部分與補齊順序列在 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 的 P2-19。
+
+---
+
 ## 注意事項
 
 - **機密管理**：所有憑證存於 `.env`（已列入 `.gitignore`）。請勿把 `.env` 分享給任何人；懷疑外洩時請立即輪替 Twitch Client Secret 與 OpenAI API Key。
 - **啟動順序**：Google Sheets 的指令集與轉職表在 Bot 啟動的 bootstrap 階段載入（其餘資料為首次使用時惰性載入），因此**啟動 Bot 時微服務需在線**；單純 import 模組（開發、測試）則不需要。
 - **非同步 HTTP**：所有對微服務與 Twitch Helix 的請求都走共用的 `httpx.AsyncClient`，重試等待不會阻塞事件圈。
 - **指令集熱更新限制**：指令集於啟動時載入一次，修改試算表後需重啟 Bot 才會生效。
-- **已知問題**：忠誠點數兌換事件偶爾收不到其他使用者的兌換通知（見 `main.py` 中 `on_points` 的 TODO）。
-- `tests/` 目前為空，尚未建立自動化測試。
+- **twitchio 版本相依**：`main.py` 的 token 同步機制寫入了 twitchio 的私有屬性（`_http.token`、`_connection._token`）。套件已釘選 `twitchio>=2.10,<3`，升級時務必一併驗證。
+- **待處理缺陷**：完整清單與優先序見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md)。
