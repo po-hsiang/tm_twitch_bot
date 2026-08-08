@@ -76,23 +76,55 @@ class MyBot(commands.Bot):
         )
         self.twitch = twitch
         self.channel = None
+        # 保留 EventSub WebSocket 的強參考。
+        # 過去它只是 event_ready 的區域變數，方法一返回就沒有任何強參考撐著，
+        # 隨時可能被 GC 回收 —— 很可能就是「別人兌換收不到事件」的主因。
+        self.eventsub_ws: EventSubWebsocket | None = None
+        # twitchio 每次成功連線（含斷線重連）都會觸發 event_ready，
+        # 一次性初始化必須自行去重，否則排程與訂閱會隨重連次數倍增。
+        self._bootstrapped = False
+
+    async def send_to_channel(self, content: str) -> None:
+        """統一的發話入口。
+
+        重連後 twitchio 會給出全新的 Channel 物件，
+        排程器若抓著舊物件的 bound method 會靜默失效，因此一律晚綁定。
+        """
+        if self.channel is None:
+            logger.error(f"channel 尚未就緒，訊息未送出：{content}")
+            return
+        await self.channel.send(content)
 
     async def event_ready(self):
+        if not self.connected_channels:
+            logger.error("event_ready 已觸發，但沒有任何已連線頻道")
+            return
+
+        # 重連後 Channel 物件會換新，這行每次都要更新
+        self.channel = self.connected_channels[0]
+
+        if self._bootstrapped:
+            logger.warning(
+                "event_ready 因 IRC 重連再次觸發，"
+                "略過一次性初始化（EventSub 訂閱／VIP 掃描／定時排程／上線公告）"
+            )
+            return
+        self._bootstrapped = True
+
         # 1) 取得頻道使用者 ID
         user = await first(self.twitch.get_users(logins=CHANNEL))
         if not user:
             logger.error("找不到頻道使用者，請確認 CHANNEL 名稱")
+            self._bootstrapped = False  # 保留下次重連時重試的機會
             return
 
         # 2) 建立 WebSocket，先 start 再 listen
-        ws = EventSubWebsocket(self.twitch)
-        ws.start()  # 先建立 session
-        await ws.listen_channel_points_custom_reward_redemption_add(
+        self.eventsub_ws = EventSubWebsocket(self.twitch)
+        self.eventsub_ws.start()  # 先建立 session
+        await self.eventsub_ws.listen_channel_points_custom_reward_redemption_add(
             user.id, self.on_points
         )  # 再訂閱並帶 callback
         logger.info("🎧  忠誠點數 WebSocket 已連線並訂閱完成")
-
-        self.channel = self.connected_channels[0]
 
         vip_system.set_api_context(
             client_id=CID,
@@ -102,15 +134,15 @@ class MyBot(commands.Bot):
         await vip_system.sweep_expired()
 
         if not config["is_test"]:
-            await self.channel.send(f"Bot 已上線 tigerm24ThruFast ")
-            await self.channel.send(
+            await self.send_to_channel(f"Bot 已上線 tigerm24ThruFast ")
+            await self.send_to_channel(
                 f"指令集： https://docs.google.com/spreadsheets/d/1-UQ7KBWK09ZCHZKFycymk04BaB5oW6DJ0vi2N7x6qQE/edit?usp=sharing "
             )
         else:
             logger.info(f"【測試測試】Bot 已上線！")
 
         # === 這裡呼叫任務排程器 ===
-        schedule_task(self.channel.send)
+        schedule_task(self.send_to_channel)
 
     async def event_message(self, message):
         if message.echo:
