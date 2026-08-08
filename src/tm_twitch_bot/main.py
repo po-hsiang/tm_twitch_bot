@@ -83,6 +83,46 @@ class MyBot(commands.Bot):
         # twitchio 每次成功連線（含斷線重連）都會觸發 event_ready，
         # 一次性初始化必須自行去重，否則排程與訂閱會隨重連次數倍增。
         self._bootstrapped = False
+        # twitchio 在建構當下就把 token 複製進 REST client 與 IRC 連線，
+        # 之後 twitchAPI 自動刷新時它並不知情，因此改為主動訂閱通知。
+        token_manager.add_listener(self._on_token_refreshed)
+
+    # ---------- Token 同步 ----------
+
+    def _on_token_refreshed(self, access_token: str, _refresh_token: str) -> None:
+        """token_manager 刷新後，把新 token 同步進 twitchio 並重連 IRC。
+
+        twitchio 2.x 沒有公開的換 token API，token 被分別複製在兩處：
+          - Client._http.token        → Helix REST 呼叫用
+          - Client._connection._token → IRC 登入時送出的 PASS oauth:<token>
+        只能直接寫入這兩個私有屬性。此處相依於 twitchio>=2.10,<3 的內部結構，
+        升級 twitchio 時務必一併驗證。
+        """
+        self._http.token = access_token
+        self._connection._token = access_token
+        logger.info("已將新的 access_token 同步至 twitchio（REST + IRC）")
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 不在事件圈內（例如啟動階段的手動刷新），此時 IRC 還沒連線，不需重連
+            return
+        loop.create_task(self._reconnect_irc())
+
+    async def _reconnect_irc(self) -> None:
+        """以新 token 重建 IRC 連線，比照 twitchio 收到 RECONNECT 時的作法。"""
+        conn = self._connection
+        if not conn.is_alive:
+            logger.info("IRC 尚未連線，略過重連（新 token 會在下次連線時生效）")
+            return
+        try:
+            conn._reconnect_requested = True  # 讓現有 _keep_alive 迴圈停止
+            if conn._keeper:
+                conn._keeper.cancel()
+            await conn._connect()
+            logger.info("🔄  IRC 已使用新的 access_token 重新連線")
+        except Exception as e:
+            logger.error(f"IRC 以新 token 重連失敗: {e}")
 
     async def send_to_channel(self, content: str) -> None:
         """統一的發話入口。
