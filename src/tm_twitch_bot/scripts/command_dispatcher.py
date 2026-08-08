@@ -158,8 +158,10 @@ async def dispatch_command(user_input: str, **context) -> Optional[str]:
             if trigger in normalized:
 
                 # 針對特定指令，改成要完全一致才會觸發，不然太容易因為網址或句子內出現數字而觸發
+                # 注意：這裡必須是 continue。過去誤用 break 會中斷整個掃描，
+                # 導致訊息只要含有 0 或 87（網址、金額、時間都會），後面所有關鍵字指令全部失效。
                 if trigger in ["0", "87"] and normalized != trigger:
-                    break
+                    continue
 
                 return await _handle_entry(*entry, tail, raw_tail_text, context)
 
