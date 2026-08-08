@@ -4,6 +4,7 @@
 | --- | --- |
 | 健檢日期 | 2026-08-09 |
 | 基準版本 | `584821e`（健檢起點） |
+| 最後更新 | 2026-08-09，第二輪修正後 |
 | 範圍 | `src/tm_twitch_bot/` 全部模組、`pyproject.toml`、版控與部署設定 |
 | 評估準則 | 依使用者指定的優先序：**穩定 > 好維護 > 好擴充** |
 
@@ -16,9 +17,12 @@
 | --- | --- |
 | ✅ | 已修正，附 commit |
 | 🧪 | 已由自動化測試鎖定，回歸時會失敗 |
+| ⏸️ | 已評估，決定不處理（附理由） |
 | 🔲 | 待處理 |
 
-## 本輪處置摘要
+## 處置摘要
+
+### 第一輪
 
 | 編號 | 項目 | 狀態 |
 | --- | --- | --- |
@@ -26,9 +30,21 @@
 | P0-2 | Token 刷新後 IRC 仍用舊 token | ✅ `b67502d` |
 | P0-3 | EventSub WebSocket 參考遺失 | ✅ `89ad915` |
 | P0-4 | `event_ready` 重連時重複初始化 | ✅ `89ad915` |
-| P2-19 | 零測試覆蓋 | ✅ `78dc68c`（36 項離線測試） |
+| P2-19 | 零測試覆蓋 | ✅ `78dc68c` |
 
-其餘 30 項維持待處理，內容如下。
+### 第二輪
+
+| 編號 | 項目 | 狀態 |
+| --- | --- | --- |
+| P0-5 | `handle_message` 無例外保護 | ✅ `38e31c7` 🧪 |
+| P0-6 | `find_by_name` regex 注入 | ✅ `57d333f` 🧪 |
+| P0-7 | VIP 過期掃描只跑一次 | ⏸️ 不處理 |
+| P0-8 | 排程例外靜默殺死整條排程 | ✅ `aaf6d95` 🧪 |
+| P2-24 | 遊戲金流與持久化不一致 | ✅ `be6e28b` `a995fe3` 🧪 |
+
+測試總數 73 項（72 passed + 1 xfailed），全部離線。
+
+剩餘 25 項待處理，內容如下。
 
 ---
 
@@ -68,41 +84,52 @@ twitchio 2.x 每次成功連線都會呼叫 `event_ready`。原本每次都會�
 
 順帶修正：排程器過去抓的是 `self.channel.send` 這個 bound method，重連後 twitchio 會給出全新的 `Channel` 物件，舊物件會靜默失效。改以 `send_to_channel()` 晚綁定。
 
-### P0-5 🔲 `handle_message` 全程沒有 try/except
+### P0-5 ✅🧪 `handle_message` 全程沒有 try/except
 
-`scripts/message_controller.py:16`
+`scripts/message_controller.py`
 
-`load_or_create`(:28) 與 `add_total_msgs_count`(:33) 都在任何保護之外。MongoDB 微服務一有閃失就丟 `StatusCodeError`，該則訊息中斷、**最後的 `await char.save()` 不會執行**，玩家經驗值與金幣直接蒸發。
+`load_or_create`、`add_total_msgs_count`、`greet_user`、`dispatch_command` 全都在任何保護之外。MongoDB 或 Google Sheets 微服務一有閃失就丟 `StatusCodeError`，該則訊息中斷、**最後的 `await char.save()` 不會執行**，玩家經驗值與金幣直接蒸發。
 
-建議：整個 handler 包一層 try/except，並確保 `char.save()` 走 `finally`。
+已修正：
 
-### P0-6 🔲 `find_by_name` 有 regex 注入
+- 整條管線包 try/except，未預期錯誤只記錄不外拋
+- 存檔移到 `finally`，任何路徑（含提早 return）都會執行
+- 只在 `char.is_dirty` 時才寫入，被冷卻或洗頻擋下的訊息不再白跑一次 DB
+- 存檔本身失敗也只記錄，避免蓋掉原本真正的錯誤
 
-`scripts/role_system.py:106,118`
+> 仍有無法消除的殘餘風險：若 `char.save()` 當下 MongoDB 不可用，該次異動終究會遺失。要根治需要 write-ahead log 或本地暫存佇列，屬於獨立工程。
+
+### P0-6 ✅🧪 `find_by_name` 有 regex 注入
+
+`scripts/role_system.py`
 
 ```python
 {"display_names": {"$regex": f"^{name}$", "$options": "i"}}
 ```
 
-`name` 是觀眾原始輸入。`!pk .*` 會匹配到隨機玩家；`!pk (a+)+$` 這種 catastrophic backtracking 可以直接把 Atlas 的 CPU 打滿。
+`name` 是觀眾原始輸入。`!pk .*` 會匹配到隨機玩家；`!pk (a+)+$` 這種 catastrophic backtracking 可以直接把 Atlas 的 CPU 打滿。已改用 `re.escape()`；中文與英數名稱不受影響，已由測試覆蓋。
 
-建議：`re.escape(name)`。
+### P0-7 ⏸️ VIP 過期掃描只在啟動時跑一次
 
-### P0-7 🔲 VIP 過期掃描只在啟動時跑一次
+`main.py`（`event_ready` 內）· `scripts/vip_system.py`
 
-`main.py`（`event_ready` 內）· `scripts/vip_system.py:150`
+`sweep_expired()` 只在 bootstrap 呼叫，Bot 連續執行期間到期的 VIP 不會被移除。
 
-`sweep_expired()` 只在 bootstrap 呼叫。Bot 若連跑一週，中間所有到期 VIP **都不會被移除**。
+**經評估後決定維持現狀**（2026-08-09，頻道主決定）：VIP 權限只在開台時才有實際作用，而開台時本來就會重啟 Bot、觸發一次掃描。多留幾天 VIP 不構成問題，不值得為此增加一條常駐排程。
 
-建議：改掛 daily job，`task_scheduler.add_daily_job()` 已經是現成的。
+> 若未來改成 Bot 常駐不重啟，或 VIP 具備離線也生效的權益，此項需要重新評估。
 
-### P0-8 🔲 排程器的例外會靜默殺死整條排程
+### P0-8 ✅🧪 排程器的例外會靜默殺死整條排程
 
-`scripts/task_scheduler.py:78-80,90-96`
+`scripts/task_scheduler.py`
 
 `while True` 內的 `_execute` 一旦拋例外，該 task 直接結束，而且沒有任何人 `await` 它 → 例外被吞掉，只在程式結束時才印 `Task exception was never retrieved`。**喝水提醒某天默默不見了，不會有任何人知道。**
 
-建議：每個 worker 內層包 try/except 並記錄，讓單次失敗不影響下一輪。
+已修正：
+
+- 新增 `_execute_safely()`：單次失敗只記錄，下一輪照常觸發；`CancelledError` 仍往外傳
+- 新增 `_on_job_finished()` done callback：排程迴圈不該自行退出，真的結束一律留下 log
+- `__init__` 改用 `get_running_loop()`，讓「在事件圈外建構」這種誤用當場暴露（原本的 `get_event_loop()` 在 Python 3.14 起會直接拋錯）
 
 ---
 
@@ -174,11 +201,13 @@ IRC 限制是 30 秒 20 則。多人同時升級（`role_system.py:182` 每次�
 
 ### P1-17 🔲 `vip_system` 的 API context 未初始化
 
-`scripts/vip_system.py:44-47`
+`scripts/vip_system.py`
 
 `_client_id` / `_broadcaster_id` / `_token_getter` 只在 `set_api_context()` 建立。任何在 `event_ready` 之前抵達的 `!vip` 都會 AttributeError。
 
-建議：`__init__` 設為 `None`，使用前檢查並回友善訊息。
+**已部分緩解**（P2-24 一併處理）：取 token 現在包在 try 內，未初始化時會退款並回覆友善訊息，不會出現「錢扣了什麼都沒發生」。
+
+仍待處理：`__init__` 應把三個屬性初始化為 `None`，並在進入兌換流程前就明確檢查，而不是靠例外兜底。
 
 ### P1-18 🔲 `.env` 的 token 寫回不是原子操作
 
@@ -197,10 +226,10 @@ IRC 限制是 30 秒 20 則。多人同時升級（`role_system.py:182` 每次�
 已建立 pytest 骨架（`tests/`）：
 
 - `conftest.py` 在 import 任何專案模組前塞入假環境變數，測試永遠不會讀到真正的 `.env`，CI 上沒有 `.env` 也能直接跑
-- 36 項測試全部離線，`uv run pytest` 約 0.3 秒完成
-- 覆蓋 `command_dispatcher`、`greeter`、`role_system`、`level_and_job_system`
+- 73 項測試全部離線，`uv run pytest` 約 0.3 秒完成
+- 覆蓋 `command_dispatcher`、`greeter`、`role_system`、`level_and_job_system`、`message_controller`、`task_scheduler`、`vip_system`
 
-尚未覆蓋（後續補齊建議順序）：`vip_system` 的兌換前置條件、`gold_rush` / `guess_number` 的金幣邊界、`http_utils` 的重試策略（適合搭配 `respx`）。
+尚未覆蓋（後續補齊建議順序）：`gold_rush` / `guess_number` 的金幣邊界、`http_utils` 的重試策略（適合搭配 `respx`）、`rank_system` 的空結果處理。
 
 ### P2-20 🔲 沒有 CI
 
@@ -228,13 +257,20 @@ repo 已建立（`po-hsiang/tm_twitch_bot`）。一個 GitHub Actions（`uv sync
 
 建議：金幣類欄位改用 `$inc` 增量更新。
 
-### P2-24 🔲 遊戲狀態與金幣持久化不一致
+### P2-24 ✅🧪 遊戲狀態與金幣持久化不一致
 
-`games/gold_rush_game.py`、`games/guess_number_game.py`、`scripts/gacha_handler.py`、`scripts/vip_system.py`
+`scripts/role_system.py`、`games/gold_rush_game.py`、`games/guess_number_game.py`、`scripts/gacha_handler.py`、`scripts/vip_system.py`
 
 這些模組都直接改 in-memory `char.gold`，靠呼叫端 `handle_message` 最後那行 `save()`。中間任何一步炸掉，就會出現「錢沒扣但注下了」或「VIP 給了但錢沒扣」。
 
-建議：讓扣款成為顯式且原子的一步。此項與 P0-5 高度相關，建議一起處理。
+已修正：
+
+- `Character.spend_gold()` 成為所有支出的唯一入口，把「檢查餘額」與「實際扣款」綁成同一步；餘額不足時回傳 `False` 且完全不改變狀態
+- `Character.is_dirty` 追蹤異動（刻意不宣告成 dataclass field，`asdict()` 才不會把它寫進 MongoDB），搭配 P0-5 的 `finally` 保證存檔
+- 四個呼叫端全部改走 `spend_gold()` / `gain_gold()`，不再直接寫 `char.gold`
+- `vip_system.redeem_vip` 改為先扣款再打 Twitch API，取 token 或 API 失敗時退款；授予成功後立刻存檔以縮短「拿到 VIP 卻還沒付錢」的視窗；兌換紀錄寫入失敗時明確記錄需人工補登
+
+> 跨系統（Twitch API + 兩個 collection）的真正原子性做不到，這裡採取的是「縮短不一致視窗 + 失敗時明確留痕」。
 
 ### P2-25 🔲 `_invoke` 的參數過濾是假的
 
@@ -319,8 +355,11 @@ repo 已建立（`po-hsiang/tm_twitch_bot`）。一個 GitHub Actions（`uv sync
 
 ## 建議的下一批處理順序
 
-1. **P0-5 + P2-24**（`handle_message` 的例外保護與金幣持久化）——目前最容易造成玩家資料遺失的一組
-2. **P0-6**（regex 注入）——一行 `re.escape` 的事，但風險等級高
-3. **P0-7 + P0-8**（VIP 掃描改 daily job、排程器例外保護）——兩者都在 `task_scheduler` 上，適合一起做
-4. **P1-12**（每日快取重置）——成本最低、觀眾體感差異最大
-5. **P2-20**（CI）——讓上述修正都有自動驗證
+P0 已全數結案（P0-7 為評估後決定不處理）。剩下的依投報率排序：
+
+1. **P2-20**（CI）——兩輪修正已累積 73 項測試，接上 GitHub Actions 才能真正發揮回歸保護的價值
+2. **P1-12**（每日快取重置）——成本最低、觀眾體感差異最大；`!梗` 目前全頻道共用同一則直到重啟
+3. **P1-16 + P1-9**（Mongo 空結果防護、日誌落檔）——兩者都是「出事時查得到、不會二次爆炸」的基本盤
+4. **P1-10 + P1-11**（重試策略、錯誤訊息不外洩）——都在 HTTP 與指令回覆路徑上，適合一起做
+5. **P2-23**（`$inc` 增量更新）——與已完成的 P2-24 是同一主題的下半場，解決並行寫入的 lost update
+6. **P2-30**（Sheets 短列）——已有 `xfail` 測試等著轉綠，修起來只有一行
