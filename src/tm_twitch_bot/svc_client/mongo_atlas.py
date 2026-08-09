@@ -1,5 +1,6 @@
 from tm_twitch_bot.utils.http_utils import request_with_retries
 from tm_twitch_bot.utils.yaml_utils import config
+from tm_twitch_bot.utils.log_utils import logger
 from typing import Optional
 import threading
 
@@ -51,7 +52,13 @@ class MongoAtlasClient(metaclass=_SingletonMeta):
         projection: dict = None,
         sort: dict = None,
         limit: int = None,
-    ):
+    ) -> list[dict]:
+        """查詢結果一律回傳 list，永遠不會是 None。
+
+        微服務異常時 results 可能缺席或為 null，過去會原封不動往上丟，
+        由每個呼叫端各自防護 —— 而 rank_system 就漏了，`enumerate(None)` 直接 TypeError。
+        統一在這一層收斂成 []，呼叫端只要判斷「有沒有資料」即可。
+        """
         payload = {
             "collection": collection,
             "filter": filter if filter else {},
@@ -60,7 +67,10 @@ class MongoAtlasClient(metaclass=_SingletonMeta):
             "limit": limit if limit else 0,
         }
         resp = await self._req_for_mongo_atlas_svc("POST", "/find", json=payload)
-        return resp.get("results")
+        if not isinstance(resp, dict):
+            logger.error(f"[MongoAtlasClient] find 回傳非預期格式，已視為空結果：{resp!r}")
+            return []
+        return resp.get("results") or []
 
     async def update(
         self,

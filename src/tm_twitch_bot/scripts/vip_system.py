@@ -179,19 +179,17 @@ class VipSystem(metaclass=_SingletonMeta):
             return  # Bug fix：過去缺少 return，功能停用時仍會執行掃描
 
         today = self._today_iso()
-        expired_docs = (
-            await mongo_atlas_client.find(
-                self.vips_col_name,
-                filter={"active": True, "expire_date": {"$lt": today}},
-                projection={
-                    "user_id": 1,
-                    "username": 1,
-                    "display_name": 1,
-                    "expire_date": 1,
-                },
-                limit=0,
-            )
-            or []
+        # find() 已保證回傳 list（見 svc_client/mongo_atlas.py），這裡不必再 `or []`
+        expired_docs = await mongo_atlas_client.find(
+            self.vips_col_name,
+            filter={"active": True, "expire_date": {"$lt": today}},
+            projection={
+                "user_id": 1,
+                "username": 1,
+                "display_name": 1,
+                "expire_date": 1,
+            },
+            limit=0,
         )
         logger.warning(f"哪些人要移除: {expired_docs}")
 
