@@ -4,10 +4,13 @@
 而它的比對邏輯（全形正規化、關鍵字掃描、函式動態載入）改動風險最高。
 """
 
+import logging
+
 import pytest
 
 from tm_twitch_bot.scripts import command_dispatcher as cd
 from tm_twitch_bot.scripts.command_dispatcher import dispatch_command
+from tm_twitch_bot.utils.error_utils import StatusCodeError
 
 HEADER = ["觸發字", "類型", "內容"]
 
@@ -146,26 +149,52 @@ async def test_sync_function_command(install_commands, monkeypatch):
     assert await dispatch_command("!ping") == "pong-sync"
 
 
-async def test_missing_function_returns_readable_error(install_commands):
+async def test_missing_function_replies_generically_and_logs_detail(
+    install_commands, caplog
+):
+    """Sheets 設定打錯時，觀眾看到制式訊息，模組路徑只進 log。"""
     install_commands([["!nope", "function", "根本沒有這個函式"]])
-    result = await dispatch_command("!nope")
-    assert "找不到函數" in result
+
+    with caplog.at_level(logging.ERROR):
+        result = await dispatch_command("!nope")
+
+    assert result == cd.GENERIC_ERROR_REPLY
+    assert "找不到函數" in caplog.text  # 設定錯誤的細節仍查得到
 
 
-async def test_function_exception_is_contained(install_commands, monkeypatch):
-    """指令函式拋例外時不能讓整個訊息處理中斷。
-
-    註：目前的實作會把例外訊息原樣回到公開聊天室，
-    這是 CODE_REVIEW.md P1-11 待處理項；此測試只鎖定「不會中斷」的部分。
-    """
+async def test_function_exception_is_contained(install_commands, monkeypatch, caplog):
+    """指令函式拋例外時不能讓整個訊息處理中斷。"""
 
     async def boom(*args, **kwargs):
         raise RuntimeError("內部爆炸")
 
     monkeypatch.setattr(cd, "boom", boom, raising=False)
     install_commands([["!boom", "function", "boom"]])
-    result = await dispatch_command("!boom")
-    assert result.startswith("⚠️ 執行 boom 時發生錯誤")
+
+    with caplog.at_level(logging.ERROR):
+        result = await dispatch_command("!boom")
+
+    assert result == cd.GENERIC_ERROR_REPLY
+    assert "內部爆炸" in caplog.text
+
+
+async def test_internal_details_never_reach_the_chat(install_commands, monkeypatch):
+    """P1-11 的核心：微服務網址、模組路徑、例外型別都不該出現在回覆裡。
+
+    StatusCodeError 的訊息長這樣——
+    「呼叫 http://localhost:9093/mongo/find 失敗」，內部拓樸就這樣公開了。
+    """
+
+    async def leaky(*args, **kwargs):
+        raise StatusCodeError("呼叫 http://localhost:9093/mongo/find 失敗：HTTP 500")
+
+    monkeypatch.setattr(cd, "leaky", leaky, raising=False)
+    install_commands([["!leak", "function", "leaky"]])
+
+    result = await dispatch_command("!leak")
+
+    for secret in ("localhost", "9093", "http", "StatusCodeError", "mongo"):
+        assert secret not in result
 
 
 # ===== 設定檔解析 =====

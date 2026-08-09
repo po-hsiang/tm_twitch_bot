@@ -39,6 +39,11 @@ async def load_command_set() -> None:
     logger.info(f"指令集載入完成，共 {len(COMMAND_SET)} 筆")
 
 
+# 給觀眾看的制式訊息。細節一律只進 log，不進聊天室——
+# 內部例外訊息會夾帶微服務網址、模組路徑等資訊，那是不該公開的內部拓樸。
+GENERIC_ERROR_REPLY = "⚠️ 這個指令暫時出了點問題，稍後再試試看 tigerm24Cry"
+
+
 # ===== 共用呼叫橋樑 =====
 
 
@@ -57,7 +62,13 @@ async def _invoke(func, tail: list[str], raw_tail_text: str, context: dict):
             result = await result
         return result
     except Exception as e:
-        return f"⚠️ 執行 {func.__name__} 時發生錯誤：{e}"
+        # 例外訊息絕不能原樣回到公開聊天室：StatusCodeError 長這樣——
+        # 「呼叫 http://localhost:9093/mongo/find 失敗」，內部拓樸就這樣公開了。
+        logger.error(
+            f"執行指令函數 {func.__name__}() 時發生錯誤: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        return GENERIC_ERROR_REPLY
 
 
 # ===== 函數快取 =====
@@ -109,7 +120,10 @@ async def _handle_entry(
         try:
             func = _load_function(content)
         except ValueError as e:
-            return str(e)
+            # 這是 Sheets 設定錯誤（函數名打錯、模組不存在），
+            # 訊息會夾帶模組路徑，同樣不能直接回到聊天室
+            logger.error(f"指令設定有誤，無法載入「{content}」：{e}")
+            return GENERIC_ERROR_REPLY
         return await _invoke(func, tail, raw_tail_text, context)
     return ""
 
