@@ -197,6 +197,33 @@ async def test_internal_details_never_reach_the_chat(install_commands, monkeypat
         assert secret not in result
 
 
+# ===== 指令集沒載入成功時（P1-37 的降級路徑）=====
+
+
+async def test_missing_command_set_returns_quietly_without_reloading(monkeypatch):
+    """Google Sheets 微服務沒開時，派發只能安靜跳過。
+
+    這裡刻意「不」補載入：重試是 main.py 排程的工作。
+    壓在每一則訊息上的話，服務沒開時每則都要耗掉一輪重試與退避。
+    """
+    attempts: list[str] = []
+
+    async def _should_not_be_called():
+        attempts.append("load")
+
+    monkeypatch.setattr(cd, "load_command_set", _should_not_be_called)
+
+    assert await dispatch_command("!英雄") == ""
+    assert attempts == []
+
+
+async def test_missing_command_set_is_logged(caplog):
+    with caplog.at_level(logging.WARNING):
+        await dispatch_command("!英雄")
+
+    assert "指令集尚未載入" in caplog.text
+
+
 # ===== 設定檔解析 =====
 
 

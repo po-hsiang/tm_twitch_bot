@@ -43,6 +43,36 @@ STREAM_EVENT_TAG = "[STREAM-EVENT]"
 SHUTDOWN_TIMEOUT = 10  # 收尾的總時限（秒）。超過就放棄，不能讓關機卡住
 SIGNAL_POLL_SECONDS = 0.5
 
+# 啟動時要從 Google Sheets（9091）載入的設定。
+# key 是給人看的名字，會直接出現在降級公告裡。
+SHEET_LOADERS = {
+    "指令集": command_dispatcher.load_command_set,
+    "轉職表": level_and_job_system.load_job_config,
+}
+SHEET_RETRY_SECONDS = 300  # 降級啟動後多久重試一次
+
+
+# ---------- 啟動設定 ----------
+async def load_sheet_config(names=None) -> list[str]:
+    """載入 Google Sheets 設定，回傳「失敗」的項目名稱。
+
+    刻意不讓失敗中斷啟動。9091 是四個微服務裡最容易忘記開的一個 ——
+    它只在啟動那一瞬間用到，開台途中完全不會再碰；
+    而少了它，Bot 仍有一半以上的功能可用：打字給經驗值、升級、
+    `!排行`、終極密碼、一桶金、VIP 掃描都不經過 Sheets。
+    「整場開台沒有機器人」比「少了 ! 指令」嚴重得多。
+
+    每個項目各自 try，一個失敗不影響另一個。
+    """
+    failed: list[str] = []
+    for name in names or list(SHEET_LOADERS):
+        try:
+            await SHEET_LOADERS[name]()
+        except Exception as e:
+            failed.append(name)
+            logger.error(f"載入「{name}」失敗: {type(e).__name__}: {e}")
+    return failed
+
 
 # ---------- 工具 ----------
 async def validate(token: str) -> Tuple[bool, str]:
@@ -79,7 +109,7 @@ async def refresh_access_token() -> Tuple[str, str]:
 # ---------- 子類別 Bot ----------
 class MyBot(commands.Bot):
 
-    def __init__(self, twitch: Twitch):
+    def __init__(self, twitch: Twitch, degraded: list[str] | None = None):
         super().__init__(
             token=f"oauth:{token_manager.access_token}",
             prefix="!",
@@ -87,6 +117,8 @@ class MyBot(commands.Bot):
         )
         self.twitch = twitch
         self.channel = None
+        # 啟動時沒載入成功的 Sheets 設定。空 list 代表一切正常。
+        self.degraded = list(degraded or [])
         # 保留 EventSub WebSocket 的強參考。
         # 過去它只是 event_ready 的區域變數，方法一返回就沒有任何強參考撐著，
         # 隨時可能被 GC 回收 —— 很可能就是「別人兌換收不到事件」的主因。
@@ -207,6 +239,35 @@ class MyBot(commands.Bot):
 
         # === 這裡呼叫任務排程器 ===
         self.scheduler = schedule_task(self.send_to_channel)
+
+        # 降級啟動時才告知觀眾並排重試；一切正常就完全不會多這條排程
+        if self.degraded:
+            await self.send_to_channel(
+                f"⚠️ 這次沒載入到：{'、'.join(self.degraded)}，相關指令暫時無法使用"
+            )
+            self.scheduler.add_interval_job(
+                self._retry_sheet_config,
+                seconds=SHEET_RETRY_SECONDS,
+                label="retry_sheet_config",
+            )
+
+    async def _retry_sheet_config(self) -> None:
+        """降級啟動之後定期重試，9091 晚一點開起來也能自己恢復。
+
+        全部恢復後這個 job 會變成什麼都不做的空轉 —— 刻意不自我取消，
+        排程任務在自己的 callback 裡取消自己太容易寫出難懂的邊界情況，
+        而五分鐘一次的早退成本是零。
+        """
+        if not self.degraded:
+            return
+
+        still_failing = await load_sheet_config(self.degraded)
+        recovered = [name for name in self.degraded if name not in still_failing]
+        self.degraded = still_failing
+        if recovered:
+            await self.send_to_channel(
+                f"✅ {'、'.join(recovered)} 已恢復，指令可以正常使用了"
+            )
 
     async def event_message(self, message):
         if message.echo:
@@ -364,10 +425,15 @@ async def main():
     logger.info("Twitch 物件建立完成")
 
     # === Bootstrap：啟動時載入 Google Sheets 設定（過去在 import 階段執行）===
-    await command_dispatcher.load_command_set()
-    await level_and_job_system.load_job_config()
+    # 失敗不中斷啟動，改為降級上線並定期重試（見 load_sheet_config）
+    degraded = await load_sheet_config()
+    if degraded:
+        logger.error(
+            f"以降級模式啟動，未載入：{'、'.join(degraded)}。"
+            f"請確認 Google Sheets 微服務（{config['google_sheets']['svc_url']}）是否已啟動"
+        )
 
-    bot = MyBot(twitch)
+    bot = MyBot(twitch, degraded=degraded)
     stop = asyncio.Event()
     _install_signal_handlers(stop)
 

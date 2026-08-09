@@ -140,8 +140,13 @@ async def dispatch_command(user_input: str, **context) -> Optional[str]:
     if not user_input:
         return ""
 
-    if not COMMAND_SET:  # 保險：bootstrap 沒跑到時，第一次派發前補載入
-        await load_command_set()
+    if not COMMAND_SET:
+        # 指令集沒載入成功（多半是 Google Sheets 微服務沒開）。
+        # 這裡刻意「不」補載入：重試是 main.py 排程的工作。
+        # 壓在每一則訊息上的話，服務沒開時每則都要耗掉一輪重試與退避，
+        # 整個聊天室都會變慢；失敗還會讓這則訊息連招呼與獎勵都拿不到。
+        logger.warning(f"指令集尚未載入，略過這次派發：{user_input}")
+        return ""
 
     normalized = user_input.replace("！", "!").strip()  # 把全形驚嘆號換成半形，並 strip
 
