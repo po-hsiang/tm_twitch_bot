@@ -2,6 +2,7 @@ from tm_twitch_bot.svc_client.mongo_atlas import mongo_atlas_client
 from tm_twitch_bot.scripts.command_dispatcher import dispatch_command
 from tm_twitch_bot.scripts.role_system import Character
 from tm_twitch_bot.scripts.greeter import greet_user
+from tm_twitch_bot.utils.chat_sender import chat_sender
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
 from time import monotonic
@@ -23,6 +24,10 @@ async def handle_message(message):
     # 機器人訊息不處理
     if user_id in config["bot_user_id"]:
         return
+
+    # 這條管線上所有發話都走同一個出口，才有辦法統一擋速率與長度。
+    # 升級／轉職訊息是尖峰的主要來源，所以 send 也要一路傳進 role_system。
+    send = chat_sender.bind(message.channel.send)
 
     char = None
     try:
@@ -50,18 +55,18 @@ async def handle_message(message):
         # 第一次講話都會打招呼，獲得 3 點經驗值、3 金幣
         greet = await greet_user(user_id)
         if greet:
-            await message.channel.send(f"@{display_name} {greet}")
-            await char.gain_exp(3, message.channel.send)
+            await send(f"@{display_name} {greet}")
+            await char.gain_exp(3, send)
             char.gain_gold(3)
 
         # 打字獲得 1 點經驗值、1 金幣
-        await char.gain_exp(rpg_parameter["default_gained_exp"], message.channel.send)
+        await char.gain_exp(rpg_parameter["default_gained_exp"], send)
         char.gain_gold(rpg_parameter["default_gainer_gold"])
 
         # 查看指令集
         cmd_reply = await dispatch_command(content, char=char, message=message)
         if cmd_reply:
-            await message.channel.send(f"@{display_name} {cmd_reply}")
+            await send(f"@{display_name} {cmd_reply}")
 
     except Exception as e:
         # 任何一步失敗（微服務暫時不可用、Twitch 發言被拒…）都不能讓角色異動蒸發，

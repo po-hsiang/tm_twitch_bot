@@ -14,6 +14,7 @@ from tm_twitch_bot.scripts.task_scheduler import schedule_task
 from tm_twitch_bot.scripts.vip_system import vip_system
 from tm_twitch_bot.scripts import command_dispatcher
 from tm_twitch_bot.scripts import level_and_job_system
+from tm_twitch_bot.utils.chat_sender import chat_sender
 from tm_twitch_bot.utils.token_manager import token_manager
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
@@ -137,7 +138,8 @@ class MyBot(commands.Bot):
         if self.channel is None:
             logger.error(f"channel 尚未就緒，訊息未送出：{content}")
             return
-        await self.channel.send(content)
+        # 統一走 chat_sender：截斷過長訊息，並確保不超過 Twitch 的速率限制
+        await chat_sender.send(self.channel.send, content)
 
     async def event_ready(self):
         if not self.connected_channels:

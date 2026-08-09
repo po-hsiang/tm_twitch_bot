@@ -30,6 +30,22 @@ for _key, _value in {
 import pytest  # noqa: E402  （必須在環境變數設定之後）
 
 
+@pytest.fixture(autouse=True)
+def _reset_chat_sender():
+    """發話速率視窗是模組級單例。
+
+    測試之間不重置的話，整份測試會共用同一個 30 秒視窗，
+    累積到上限之後後面的測試就會真的睡 30 秒。
+    順帶重置內部的 asyncio.Lock —— 它會記住第一次使用時的事件圈，
+    而 pytest-asyncio 每個測試都給一個新的。
+    """
+    from tm_twitch_bot.utils.chat_sender import chat_sender
+
+    chat_sender.reset()
+    yield
+    chat_sender.reset()
+
+
 @pytest.fixture
 def collect_sends():
     """回傳 (async send_func, 已送出訊息 list)，用來取代 message.channel.send。"""
