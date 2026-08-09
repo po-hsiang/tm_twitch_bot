@@ -74,7 +74,11 @@ def _quiet_greeter(monkeypatch):
 
 
 def saves_of(store) -> list[dict]:
-    """從所有 update 中挑出角色存檔（$set），排除發言計數的 $inc。"""
+    """從所有 update 中挑出角色存檔，排除發言計數。
+
+    角色存檔一定帶 $set（至少有 updated_at），發言計數只有 $inc，
+    因此看有沒有 $set 就分得出來。金額本身則走 $inc（見 P2-23）。
+    """
     return [u for u in store["updates"] if "$set" in u]
 
 
@@ -91,7 +95,7 @@ async def test_new_user_is_created_and_saved(fake_mongo, monkeypatch):
 
     assert len(fake_mongo["inserts"]) == 1  # 創角
     assert len(saves_of(fake_mongo)) == 1  # 存檔一次
-    assert saves_of(fake_mongo)[0]["$set"]["gold"] == 1  # 發言得 1 金幣
+    assert saves_of(fake_mongo)[0]["$inc"]["gold"] == 1  # 發言得 1 金幣（差額）
 
 
 async def test_command_reply_is_sent_to_channel(fake_mongo, monkeypatch):
@@ -130,8 +134,8 @@ async def test_rewards_are_saved_even_when_command_raises(fake_mongo, monkeypatc
 
     saves = saves_of(fake_mongo)
     assert len(saves) == 1
-    assert saves[0]["$set"]["gold"] == 1
-    assert saves[0]["$set"]["exp"] == 1
+    assert saves[0]["$inc"]["gold"] == 1
+    assert saves[0]["$inc"]["exp"] == 1
 
 
 async def test_greeting_failure_does_not_abort_the_pipeline(fake_mongo, monkeypatch):

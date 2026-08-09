@@ -37,6 +37,19 @@ class Character:
         # 用途：讓 message_controller 知道這次訊息有沒有改到角色，
         # 沒改到就不用白跑一次存檔，改到了就一定要存（即使中途出錯）。
         self._dirty = False
+        # 同樣不是 dataclass field。存檔要送「差額」而不是絕對值，
+        # 因此得記住載入當下的數值當作基準線（見 save()）。
+        self._baseline = self._snapshot()
+
+    def _snapshot(self) -> dict:
+        """記下目前的數值欄位，作為下次存檔算差額的基準。"""
+        return {
+            "level": self.level,
+            "exp": self.exp,
+            "gold": self.gold,
+            "job": self.job,
+            "attributes": dict(self.attributes),
+        }
 
     # ---------- 髒資料追蹤 ----------
 
@@ -55,7 +68,7 @@ class Character:
 
     @classmethod
     def from_dict(cls, doc: dict) -> "Character":
-        return cls(
+        char = cls(
             user_id=doc["user_id"],
             usernames=doc.get("usernames", []),
             display_names=doc.get("display_names", []),
@@ -65,6 +78,11 @@ class Character:
             job=doc.get("job", "初學者"),
             attributes=doc.get("attributes", DEFAULT_ATTRIBUTES.copy()),
         )
+        # 基準線要對齊「資料庫裡實際有什麼」，而不是補完預設值之後的樣子：
+        # 舊文件若缺 attributes，補上的預設值不能被當成已經寫進 DB，
+        # 否則那六個屬性永遠不會有機會被寫入。
+        char._baseline["attributes"] = dict(doc.get("attributes") or {})
+        return char
 
     # ---------- DB 相關 ----------
 
@@ -163,27 +181,62 @@ class Character:
             self.display_names.append(display_name)
             self._dirty = True
 
+    def _pending_increments(self) -> dict[str, int]:
+        """算出自上次存檔以來的數值差額。沒變的欄位不會出現在結果裡。"""
+        increments: dict[str, int] = {}
+        for field_name in ("level", "exp", "gold"):
+            delta = getattr(self, field_name) - self._baseline[field_name]
+            if delta:
+                increments[field_name] = delta
+
+        baseline_attributes = self._baseline["attributes"]
+        for key, value in self.attributes.items():
+            delta = value - baseline_attributes.get(key, 0)
+            if delta:
+                increments[f"attributes.{key}"] = delta
+        return increments
+
     async def save(self):
+        """把「差額」寫回資料庫，而不是用手上的快照覆蓋整份文件。
+
+        全欄位 `$set` 會 lost update：
+        某人正在聊天（handler 手上是載入當下的舊快照）時，一桶金結算重新讀取
+        同一個角色、發完獎金存檔；接著聊天 handler 用舊快照把整份文件蓋回去
+        —— 獎金就這樣消失了。改成 `$inc` 之後兩邊的增減都會被算進去，
+        誰先寫誰後寫都不影響最後的餘額。
+
+        `job` 是字串，沒有「差額」可言，因此只在真的變了才 `$set`；
+        沒變就不寫，才不會用舊快照蓋掉別人剛改好的職業。
+
+        代價要說清楚：兩個流程同時扣款時，餘額檢查各自看自己的快照，
+        資料庫的 gold 仍有機會被扣成負數。但原本的 `$set` 是「其中一筆扣款
+        整個消失」（等於白吃白喝），`$inc` 至少兩筆都算到。真正的解法要靠
+        條件式更新，而目前的微服務 API 拿不到「有沒有更新到」的回應。
+        """
+        update: dict = {
+            "$set": {"updated_at": self._now_str()},
+            "$addToSet": {
+                "usernames": {"$each": self.usernames},
+                "display_names": {"$each": self.display_names},
+            },
+        }
+
+        increments = self._pending_increments()
+        if increments:
+            update["$inc"] = increments
+        if self.job != self._baseline["job"]:
+            update["$set"]["job"] = self.job
+
         await mongo_atlas_client.update(
             "tm_twitch_users",
-            update={
-                "$set": {
-                    "level": self.level,
-                    "exp": self.exp,
-                    "gold": self.gold,
-                    "job": self.job,
-                    "attributes": self.attributes,
-                    "updated_at": self._now_str(),
-                },
-                "$addToSet": {
-                    "usernames": {"$each": self.usernames},
-                    "display_names": {"$each": self.display_names},
-                },
-            },
+            update=update,
             filter={"user_id": self.user_id},
             many=False,
         )
+        # 寫入成功之後才推進基準線。失敗時維持原樣，差額才不會憑空消失 ——
+        # vip_system 正是靠這點：它存檔失敗後由 message_controller 的 finally 再存一次。
         self._dirty = False
+        self._baseline = self._snapshot()
 
     # ---------- RPG 行為 ----------
 
