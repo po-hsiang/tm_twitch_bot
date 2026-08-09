@@ -537,7 +537,7 @@
         <li><span class="k">本地微服務依賴</span><span class="v">4 個（:9091 至 :9094）</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">107 項（全部離線）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">149 項（全部離線）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -815,7 +815,7 @@
           <ul class="ops-list">
             <li><s>要記得手動開</s> → <strong class="hl">不成立</strong>：開台前一定會開，忘了觀眾也會提醒。</li>
             <li><s>中途掛掉沒有人救</s> → <strong class="hl">影響可接受</strong>：家用電腦每天重開機，且「當次開台沒機器人就算了」。</li>
-            <li><strong>綁在一台機器上。</strong>四個本機微服務的啟動方式完全沒有被記錄，重灌或換機就要重新考古。<strong class="hl">這是唯一真正嚴重的風險</strong>——前兩點有使用習慣兜底，這點沒有。</li>
+            <li><s>綁在一台機器上</s> → <strong class="hl">原判斷是誤判</strong>：四個微服務都已各自容器化（各有 Dockerfile / compose.yaml），網址也讀設定檔而非寫死。真正缺的只是「這個 repo 裡沒有那四個服務的清單」，補一份文件即可。</li>
             <li>長期任務無處可掛（VIP 到期當天移除、每日統計）。</li>
             <li>開台前幾分鐘有空窗，觀眾比機器人早到。</li>
           </ul>
@@ -828,7 +828,7 @@
             <li>可以自動重啟，掛掉自己爬起來。</li>
             <li>長期排程有地方掛，VIP 每日到期掃描變成自然的事。</li>
             <li>可以在關台後做事（結算當日排行、產出數據）。</li>
-            <li>容器化會強迫把四個微服務的啟動方式寫下來。</li>
+            <li>會強迫把「哪四個服務、怎麼一起起來」寫成一份設定。</li>
           </ul>
           <div class="ops-side con">劣勢</div>
           <ul class="ops-list">
@@ -843,12 +843,10 @@
     </div>
 
     <div class="reveal ops-verdict">
-      <h3 class="ops-h">結論：維持 A 手動啟動，唯一該補的是部署設定</h3>
+      <h3 class="ops-h">結論：維持 A 手動啟動</h3>
       <p class="ops-p">
-        A 的五項劣勢裡，前兩項被使用習慣消化掉了，第 4、5 項是能接受的取捨，
-        <strong class="hl">只剩「綁在一台機器上」是真的要處理的</strong>——
-        而它不需要改成常駐就能解：把四個微服務的啟動方式記錄下來即可。
-        容器化與常駐是兩件事，可以只要前者。
+        A 的五項劣勢裡，前兩項被使用習慣消化掉了，第 3 點經澄清後是誤判（微服務早就容器化了），
+        第 4、5 項是能接受的取捨。<strong class="hl">這條路線目前沒有未解的嚴重風險。</strong>
       </p>
       <p class="ops-p">
         反過來，B 的最大劣勢正好打在頻道主最在意的地方。
@@ -912,6 +910,39 @@
         若發現會漏、會抖，就代表 B 架構的成本比預估更高，維持 A 的決定更加穩固。
       </p>
     </div>
+
+    <div class="reveal ops-block">
+      <h3 class="ops-h">五、微服務的獨立性：原則正確，現況有一處落差</h3>
+      <p class="ops-p">
+        四個本機微服務都是自行開發並已容器化，各自的專案資料夾有自己的
+        <code>Dockerfile</code> 與 <code>compose.yaml</code>；Bot 端的網址也讀
+        <code>config_common.yaml</code> 的 <code>svc_url</code>，沒有寫死。
+        「微服務應獨立部署、掛掉不影響主體」這個原則本身完全正確——
+        <strong class="hl">但實際查證後，四個裡有一個並不成立。</strong>
+      </p>
+      <div class="cmd-table-wrap">
+        <table>
+          <thead>
+            <tr><th>服務</th><th>Port</th><th>掛掉時的實際影響</th><th>誰擋住的</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Google Sheets</td><td>9091</td><td><strong class="hl">Bot 完全起不來</strong></td><td>無</td></tr>
+            <tr><td>OpenAI</td><td>9092</td><td><code>!gpt</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
+            <tr><td>MongoDB</td><td>9093</td><td>該次訊息的獎勵存不了並記 log，其餘正常</td><td><code>message_controller</code></td></tr>
+            <tr><td>YouTube</td><td>9094</td><td><code>!找歌</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="ops-p" style="margin-top:20px">
+        原因是 <code>main()</code> 的 bootstrap 直接 <code>await</code> 兩個 Sheets 呼叫且沒有 try，
+        例外會一路拋穿。而 9091 偏偏是四個裡最容易忘記開的一個——
+        它只在啟動那一瞬間用到，開台途中完全不會再碰。
+      </p>
+      <p class="ops-note">
+        建議降級啟動：即使沒有指令集，打字給經驗值、升級、<code>!排行</code>、終極密碼、一桶金、VIP 掃描都還能用，
+        一半以上的功能仍在線。詳見 CODE_REVIEW 的 P1-37。
+      </p>
+    </div>
   </section>
 
   <!-- ============ 指令 ============ -->
@@ -959,7 +990,7 @@
       <p>
         依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
         <br>
-        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-09，第四輪後）：10 項已修正、2 項部分處理。</span>
+        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-09，第五輪後）：10 項已修正、3 項部分處理。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
       </p>
     </div>
@@ -1233,9 +1264,9 @@
      desc:"twitchAPI 自動刷新 token 時 callback（save_tokens）只把新值寫回 YAML，沒有更新模組層級的 ACCESS 變數。vip_system 的 token_getter 是 lambda: ACCESS，之後兌換 VIP 會以過期 token 呼叫 Helix 而收到 401。",
      fix:"建立單一的 TokenManager 物件保存最新 token，refresh callback 與 token_getter 都指向同一實例；twitchio 的聊天連線 token 也應納入同一機制。",
      files:["main.py:98","utils/yaml_utils.py"]},
-    {cat:"bug", sev:"mid", title:"一桶金的結束訊息可能永遠不會送出",
-     desc:"_end_game 是排程 callback，但「沒有人參加」「找不到參加者資料」兩種情況用 return 字串處理，沒有任何地方接收這個回傳值，觀眾看不到遊戲結束的訊息。",
-     fix:"錯誤情況改為 await send_func(訊息)，與得獎訊息走同一條路。",
+    {cat:"bug", sev:"mid", st:"done", title:"一桶金的結束訊息可能永遠不會送出",
+     desc:"_end_game 是排程 callback，但「沒有人參加」「找不到參加者資料」兩種情況用 return 字串處理，沒有任何地方接收這個回傳值，觀眾看不到遊戲結束的訊息。同一個 create_task 還有兩個附帶問題：回傳值沒被留住（可能被 GC 回收）、結算途中的例外被靜默吞掉。",
+     fix:"錯誤情況改為 await send_func(訊息)，與得獎訊息走同一條路；task 留強參考並掛 done callback 記錄例外。",
      files:["games/gold_rush_game.py:65"]},
     {cat:"bug", sev:"mid", st:"done", title:"不成對的引號會讓整句訊息處理中斷",
      desc:"dispatch_command 用 shlex.split 切割輸入，遇到單獨的引號（例如觀眾只打了一個 \" ）會拋出 ValueError，例外一路傳回 handle_message，該句訊息的獎勵與回覆全部消失。",
@@ -1257,9 +1288,9 @@
      desc:"所有 svc_client 走 requests 同步請求，重試間隔 time.sleep(5)、讀取逾時高達 600 秒。這些呼叫發生在 async 訊息處理路徑上，最壞情況整個 Bot（含聊天心跳與排程）會被凍結十分鐘以上。",
      fix:"將 svc_client 改為 httpx.AsyncClient（專案已相依 httpx），或以 asyncio.to_thread 包裝既有同步呼叫；重試等待改用 asyncio.sleep，並將讀取逾時降到合理秒數。",
      files:["utils/http_utils.py","svc_client/*"]},
-    {cat:"perf", sev:"high", st:"done", title:"模組載入階段就發出網路請求",
-     desc:"command_dispatcher、greeter、daily pickers、level_and_job_system、youtube client 都在 import 時呼叫微服務。任何一個服務沒開，Bot 直接在 import 階段 crash；啟動變慢，單元測試也無法在離線環境進行。",
-     fix:"改為 lazy 初始化（首次使用時載入）或集中在 main() 的明確 bootstrap 步驟，並針對個別服務失敗提供降級行為。",
+    {cat:"perf", sev:"high", st:"partial", title:"模組載入階段就發出網路請求",
+     desc:"command_dispatcher、greeter、daily pickers、level_and_job_system、youtube client 都在 import 時呼叫微服務。任何一個服務沒開，Bot 直接在 import 階段 crash；啟動變慢，單元測試也無法在離線環境進行。（已改為 main() 的明確 bootstrap，測試也全部離線。但「個別服務失敗的降級行為」還沒做——Google Sheets 服務沒開時 bootstrap 仍會拋例外，Bot 起不來，見 CODE_REVIEW P1-37。）",
+     fix:"剩下的部分：bootstrap 包 try，Sheets 載入失敗時記 error 並降級啟動；dispatch_command 現有的「首次派發時補載入」會讓服務晚一點開起來也能自己恢復。",
      files:["scripts/command_dispatcher.py","scripts/greeter.py","svc_client/youtube.py"]},
     {cat:"perf", sev:"mid", title:"VIP 名額計算撈回整張表再數數",
      desc:"_active_vip_count 用 find(limit=0) 把所有有效 VIP 文件抓回來再 len()，資料量成長後每次 !vip 都是一次全表傳輸。",
@@ -1270,8 +1301,8 @@
      fix:"建立統一的 TTL 快取工具；定期修剪冷卻字典。原本建議的「每日重置 food / meme / 招呼名單」已撤回，與刻意的營運設計衝突。",
      files:["svc_client/youtube.py","scripts/daily_food_picker.py","scripts/message_controller.py"]},
     {cat:"perf", sev:"mid", st:"partial", title:"斷線或例外後 Bot 直接死亡，無自動重連",
-     desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。",
-     fix:"外層加 supervisor 迴圈搭配指數退避重連；sweep_expired 改由 task_scheduler 每日執行；區分可重試與致命錯誤。",
+     desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。（已補上 graceful shutdown：SIGINT / SIGTERM 會依序取消排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，finally 裡的 sys.exit 也已移除。）",
+     fix:"剩下的部分：外層加 supervisor 迴圈搭配指數退避重連。依「開台時手動啟動」的營運決策，這一項已從必要降為加分項——當次開台故障是可接受的。",
      files:["main.py:179","scripts/vip_system.py"]},
     {cat:"quality", sev:"mid", title:"_SingletonMeta 重複貼了六份",
      desc:"六個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改六個地方。",
@@ -1290,7 +1321,7 @@
      fix:"新增管理員限定的 !reload 指令重新拉取指令集，或由排程器每 N 分鐘自動重載。",
      files:["scripts/command_dispatcher.py"]},
     {cat:"quality", sev:"low", title:"清理死碼與佔位資訊",
-     desc:"error_utils / vault_utils / asset_file_utils 幾乎整檔註解（含另一專案 vivy 的遺留）、tttest.py 為草稿檔、pyproject 的 authors 仍是範本值、main.py 有 finally 後的 unreachable sys.exit。",
+     desc:"error_utils / vault_utils / asset_file_utils 幾乎整檔註解（含另一專案 vivy 的遺留）、tttest.py 為草稿檔、pyproject 的 authors 仍是範本值。（main.py finally 裡的 sys.exit 已隨 graceful shutdown 一併移除。）",
      fix:"刪除或移入 git 歷史保存；補上正確的專案 metadata；統一結束流程。",
      files:["utils/error_utils.py","utils/vault_utils.py","tttest.py","pyproject.toml"]}
   ];
