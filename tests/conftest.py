@@ -9,6 +9,13 @@ CI 上沒有 .env 也能直接跑。
 """
 
 import os
+import tempfile
+
+# log_utils 在 import 當下就會建立 logs/ 目錄，測試不該在專案裡留下檔案。
+# 指向系統暫存目錄的固定位置（不用亂數，才不會每跑一次就多一個資料夾）。
+os.environ.setdefault(
+    "TM_BOT_LOG_DIR", os.path.join(tempfile.gettempdir(), "tm_twitch_bot_test_logs")
+)
 
 for _key, _value in {
     "TWITCH_CLIENT_ID": "test-client-id",
