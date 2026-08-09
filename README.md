@@ -166,6 +166,8 @@ tm_twitch_bot/
     ├── test_mongo_find_contract.py
     ├── test_chat_sender.py
     ├── test_gold_rush_game.py
+    ├── test_character_persistence.py
+    ├── test_sheet_bootstrap.py
     ├── test_shutdown.py
     ├── test_http_utils.py
     └── test_log_utils.py
@@ -338,9 +340,9 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 uv run pytest
 ```
 
-目前 149 項測試，約 0.6 秒跑完。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
+目前 170 項測試，約 0.65 秒跑完。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）。
+覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）。
 
 尚未覆蓋的部分與補齊順序列在 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 的 P2-19。
 
@@ -366,7 +368,7 @@ uv run pytest
 ## 注意事項
 
 - **機密管理**：所有憑證存於 `.env`（已列入 `.gitignore`）。請勿把 `.env` 分享給任何人；懷疑外洩時請立即輪替 Twitch Client Secret 與 OpenAI API Key。
-- **啟動順序**：Google Sheets 的指令集與轉職表在 Bot 啟動的 bootstrap 階段載入（其餘資料為首次使用時惰性載入），因此**啟動 Bot 前必須先把 9091 這個微服務開起來**——目前沒有降級路徑，它沒開 Bot 會直接啟動失敗（CODE_REVIEW P1-37）。另外三個微服務（9092／9093／9094）沒開則只影響對應指令，Bot 照常運作。單純 import 模組（開發、測試）不需要任何微服務。
+- **啟動順序**：Google Sheets 的指令集與轉職表在 Bot 啟動的 bootstrap 階段載入（其餘資料為首次使用時惰性載入）。**四個微服務任何一個沒開都不會擋住啟動**：9091 沒開時 Bot 會降級上線（沒有 `!` 指令，但經驗值、升級、`!排行`、遊戲、VIP 掃描照常），並在聊天室公告，之後每 5 分鐘自動重試，服務開起來就會恢復；9092／9093／9094 沒開則只影響對應指令。單純 import 模組（開發、測試）不需要任何微服務。
 - **非同步 HTTP**：所有對微服務與 Twitch Helix 的請求都走共用的 `httpx.AsyncClient`，重試等待不會阻塞事件圈。
 - **發話速率**：所有進聊天室的訊息都經過 `utils/chat_sender.py`，限制 30 秒 18 則（Twitch 官方是 20 則，超過會被靜音約 30 分鐘），單則超過 500 字元自動截斷。log 出現「已達自訂發話上限」代表當下正在排隊，不是錯誤。
 - **關閉方式**：直接按 Ctrl+C 即可，會依序取消定時排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，最多等 10 秒。收尾卡住時再按一次 Ctrl+C 會強制結束。

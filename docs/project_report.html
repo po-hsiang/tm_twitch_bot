@@ -537,7 +537,7 @@
         <li><span class="k">本地微服務依賴</span><span class="v">4 個（:9091 至 :9094）</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">149 項（全部離線）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">170 項（全部離線）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -912,13 +912,13 @@
     </div>
 
     <div class="reveal ops-block">
-      <h3 class="ops-h">五、微服務的獨立性：原則正確，現況有一處落差</h3>
+      <h3 class="ops-h">五、微服務的獨立性：原則正確，落差已補上</h3>
       <p class="ops-p">
         四個本機微服務都是自行開發並已容器化，各自的專案資料夾有自己的
         <code>Dockerfile</code> 與 <code>compose.yaml</code>；Bot 端的網址也讀
         <code>config_common.yaml</code> 的 <code>svc_url</code>，沒有寫死。
         「微服務應獨立部署、掛掉不影響主體」這個原則本身完全正確——
-        <strong class="hl">但實際查證後，四個裡有一個並不成立。</strong>
+        但實際查證後，<strong class="hl">四個裡曾有一個並不成立</strong>（已於 2026-08-09 修正）。
       </p>
       <div class="cmd-table-wrap">
         <table>
@@ -926,7 +926,7 @@
             <tr><th>服務</th><th>Port</th><th>掛掉時的實際影響</th><th>誰擋住的</th></tr>
           </thead>
           <tbody>
-            <tr><td>Google Sheets</td><td>9091</td><td><strong class="hl">Bot 完全起不來</strong></td><td>無</td></tr>
+            <tr><td>Google Sheets</td><td>9091</td><td><s>Bot 完全起不來</s> → 降級上線，5 分鐘自動重試</td><td><code>main.load_sheet_config</code></td></tr>
             <tr><td>OpenAI</td><td>9092</td><td><code>!gpt</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
             <tr><td>MongoDB</td><td>9093</td><td>該次訊息的獎勵存不了並記 log，其餘正常</td><td><code>message_controller</code></td></tr>
             <tr><td>YouTube</td><td>9094</td><td><code>!找歌</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
@@ -938,9 +938,14 @@
         例外會一路拋穿。而 9091 偏偏是四個裡最容易忘記開的一個——
         它只在啟動那一瞬間用到，開台途中完全不會再碰。
       </p>
+      <p class="ops-p">
+        <strong class="hl">已修正</strong>：改為降級啟動。載入失敗只記錄並在聊天室公告，
+        Bot 照常上線；之後每 5 分鐘重試一次，服務晚一點開起來就會自動恢復並再公告一次。
+        少了指令集仍然有打字給經驗值、升級、<code>!排行</code>、終極密碼、一桶金、VIP 掃描可用——
+        一半以上的功能還在線，比「整場開台沒有機器人」好得多。
+      </p>
       <p class="ops-note">
-        建議降級啟動：即使沒有指令集，打字給經驗值、升級、<code>!排行</code>、終極密碼、一桶金、VIP 掃描都還能用，
-        一半以上的功能仍在線。詳見 CODE_REVIEW 的 P1-37。
+        四個微服務現在都符合「掛掉不影響主體」的原則了。
       </p>
     </div>
   </section>
@@ -990,7 +995,7 @@
       <p>
         依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
         <br>
-        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-09，第五輪後）：10 項已修正、3 項部分處理。</span>
+        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-09，第六輪後）：共 21 項，12 項已修正、2 項部分處理。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
       </p>
     </div>
@@ -1288,10 +1293,14 @@
      desc:"所有 svc_client 走 requests 同步請求，重試間隔 time.sleep(5)、讀取逾時高達 600 秒。這些呼叫發生在 async 訊息處理路徑上，最壞情況整個 Bot（含聊天心跳與排程）會被凍結十分鐘以上。",
      fix:"將 svc_client 改為 httpx.AsyncClient（專案已相依 httpx），或以 asyncio.to_thread 包裝既有同步呼叫；重試等待改用 asyncio.sleep，並將讀取逾時降到合理秒數。",
      files:["utils/http_utils.py","svc_client/*"]},
-    {cat:"perf", sev:"high", st:"partial", title:"模組載入階段就發出網路請求",
-     desc:"command_dispatcher、greeter、daily pickers、level_and_job_system、youtube client 都在 import 時呼叫微服務。任何一個服務沒開，Bot 直接在 import 階段 crash；啟動變慢，單元測試也無法在離線環境進行。（已改為 main() 的明確 bootstrap，測試也全部離線。但「個別服務失敗的降級行為」還沒做——Google Sheets 服務沒開時 bootstrap 仍會拋例外，Bot 起不來，見 CODE_REVIEW P1-37。）",
-     fix:"剩下的部分：bootstrap 包 try，Sheets 載入失敗時記 error 並降級啟動；dispatch_command 現有的「首次派發時補載入」會讓服務晚一點開起來也能自己恢復。",
+    {cat:"perf", sev:"high", st:"done", title:"模組載入階段就發出網路請求",
+     desc:"command_dispatcher、greeter、daily pickers、level_and_job_system、youtube client 都在 import 時呼叫微服務。任何一個服務沒開，Bot 直接在 import 階段 crash；啟動變慢，單元測試也無法在離線環境進行。",
+     fix:"已改為 main() 的明確 bootstrap，測試全部離線；並補上降級行為——Google Sheets 服務沒開時記 error 後照常上線，每 5 分鐘自動重試，恢復後在聊天室公告（CODE_REVIEW P1-37）。",
      files:["scripts/command_dispatcher.py","scripts/greeter.py","svc_client/youtube.py"]},
+    {cat:"perf", sev:"high", st:"done", title:"角色存檔用整份快照覆蓋，並行寫入會 lost update",
+     desc:"Character.save() 是全欄位 $set。某人正在聊天（handler 手上是載入當下的舊快照）時，一桶金結算重新讀取同一個角色、發完獎金存檔；接著聊天 handler 用舊快照把整份文件蓋回去，獎金直接消失。",
+     fix:"改為 $inc 差額更新：level / exp / gold 與各項 attributes 只送「變了多少」，job 只在真的變了才 $set。基準線在寫入成功後才推進，失敗時保留差額給下次重試。",
+     files:["scripts/role_system.py"]},
     {cat:"perf", sev:"mid", title:"VIP 名額計算撈回整張表再數數",
      desc:"_active_vip_count 用 find(limit=0) 把所有有效 VIP 文件抓回來再 len()，資料量成長後每次 !vip 都是一次全表傳輸。",
      fix:"微服務端新增 count 端點（count_documents），Bot 端改呼叫計數。",
