@@ -32,6 +32,10 @@ CID = twitch_config["client_id"]
 CSECRET = twitch_config["client_secret"]
 CHANNEL = twitch_config["channel"]
 
+# 開台／關台事件的 log 標記。刻意用純 ASCII，方便日後 grep：
+#   grep STREAM-EVENT logs/tm_twitch_bot.log
+STREAM_EVENT_TAG = "[STREAM-EVENT]"
+
 
 # ---------- 工具 ----------
 async def validate(token: str) -> Tuple[bool, str]:
@@ -166,6 +170,16 @@ class MyBot(commands.Bot):
         )  # 再訂閱並帶 callback
         logger.info("🎧  忠誠點數 WebSocket 已連線並訂閱完成")
 
+        # 3) 開台／關台事件——目前「只觀測、不改行為」。
+        # 兩者都不需要額外 scope。這一步的用意是先累積實際資料：
+        # EventSub 的 WebSocket 一斷線，訂閱會全部失效且事件不補發；
+        # stream.offline 也可能因推流短暫中斷而抖動。
+        # 先跑一陣子確認事件夠可靠，再決定要不要把 Bot 改成常駐服務。
+        # 完整取捨見 docs/CODE_REVIEW.md 附錄 A。
+        await self.eventsub_ws.listen_stream_online(user.id, self.on_stream_online)
+        await self.eventsub_ws.listen_stream_offline(user.id, self.on_stream_offline)
+        logger.info("📡  已訂閱開台／關台事件（僅記錄 log，不影響任何行為）")
+
         vip_system.set_api_context(
             client_id=CID,
             broadcaster_id=user.id,
@@ -196,6 +210,33 @@ class MyBot(commands.Bot):
 
         # 正式時走這段
         await handle_message(message)
+
+    # ---------- 開台／關台觀測 ----------
+    #
+    # 這兩個 handler 是刻意「唯讀」的：只寫 log，不碰任何狀態、不發任何訊息。
+    # 觀察期要回答的問題是——事件會不會漏、offline 會不會抖、延遲多久。
+    # 之後用 STREAM_EVENT_TAG 撈 logs/tm_twitch_bot.log 就能一次看完。
+
+    async def on_stream_online(self, data) -> None:
+        try:
+            event = data.event
+            logger.warning(
+                f"{STREAM_EVENT_TAG} 開台 stream_id={event.id} type={event.type} "
+                f"started_at={event.started_at} 頻道={event.broadcaster_user_name}"
+            )
+        except Exception as e:
+            # 觀測用的程式碼絕不能反過來影響 Bot，欄位對不上就記下來就好
+            logger.error(f"{STREAM_EVENT_TAG} 開台事件解析失敗: {e}")
+
+    async def on_stream_offline(self, data) -> None:
+        try:
+            event = data.event
+            logger.warning(
+                f"{STREAM_EVENT_TAG} 關台 頻道={event.broadcaster_user_name}"
+                f"（{event.broadcaster_user_id}）"
+            )
+        except Exception as e:
+            logger.error(f"{STREAM_EVENT_TAG} 關台事件解析失敗: {e}")
 
     async def on_points(self, subscription_and_event):
         # TODO 待實測：過去有「其他人兌換收不到事件」的 Bug。
