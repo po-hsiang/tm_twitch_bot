@@ -1,4 +1,4 @@
-from tm_twitch_bot.utils.http_utils import request_with_retries
+from tm_twitch_bot.utils.http_utils import request_with_retries, LONG_TIMEOUT
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
 from typing import Optional
@@ -34,7 +34,10 @@ class OpenAIClient(metaclass=_SingletonMeta):
         json: Optional[dict] = None,
     ):
         api_url = f"{self.base_url}{path}"
-        resp = await request_with_retries(method, api_url, params=params, json=json)
+        # GPT 產生回覆本來就慢，用加長的讀取逾時，不受一般微服務的 20 秒限制
+        resp = await request_with_retries(
+            method, api_url, params=params, json=json, timeout=LONG_TIMEOUT
+        )
         resp_json = resp.json()
         # logger.info(f"[OpenAIClient] resp_json: {resp_json}")
         return resp_json
