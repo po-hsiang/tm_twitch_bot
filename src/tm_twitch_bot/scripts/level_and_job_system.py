@@ -6,10 +6,33 @@ from tm_twitch_bot.utils.log_utils import logger
 JOB_CONFIG: dict[int, dict] = {}
 
 
+def _cell(row: list[str], idx: int) -> str:
+    """安全取格。
+
+    Google Sheets API 會把每一列尾端的空白儲存格截掉，
+    所以「列比表頭短」是常態而不是例外——直接 row[idx] 會 IndexError。
+    這張表是在啟動 bootstrap 階段解析的，解析失敗等於 Bot 起不來。
+    """
+    return row[idx].strip() if idx < len(row) else ""
+
+
+def _to_level(raw: str) -> int | None:
+    """等級門檻必須是正整數；不是的話回傳 None 讓呼叫端略過該欄。"""
+    try:
+        level = int(raw.strip())
+    except (AttributeError, ValueError):
+        return None
+    return level if level > 0 else None
+
+
 def parse_jobs_sheet(raw_data: list[list[str]]) -> dict[int, dict]:
     """
     raw_data 來自 google_sheets_client.get_sheet_data()
     第一列 → 中文序，第二列 → 等級門檻，其餘列 → 各職業
+
+    這張表可以被手動編輯，格式隨時可能歪掉，而它又是啟動時就要解析的。
+    因此除了「整張表根本不成形」之外，一律容忍並記錄，不讓 Bot 起不來：
+    少一個轉職階段只影響那一級的轉職，起不來則是整場開台都沒有機器人。
     """
     if len(raw_data) < 3:
         raise ValueError("資料格式不足，無法解析")
@@ -19,9 +42,15 @@ def parse_jobs_sheet(raw_data: list[list[str]]) -> dict[int, dict]:
     job_rows = raw_data[2:]  # 之後每列都是職業
     job_config: dict[int, dict] = {}
     for idx, lvl in enumerate(levels_line):
-        stage_name = stages[idx]
-        jobs = [row[idx].strip() for row in job_rows if row[idx].strip()]
-        job_config[int(lvl)] = {"stage": stage_name, "jobs": jobs}
+        level = _to_level(lvl)
+        if level is None:
+            logger.error(
+                f"轉職表第 {idx + 1} 欄的等級門檻「{lvl}」不是正整數，已略過該欄"
+            )
+            continue
+        stage_name = _cell(stages, idx)
+        jobs = [job for job in (_cell(row, idx) for row in job_rows) if job]
+        job_config[level] = {"stage": stage_name, "jobs": jobs}
     return job_config
 
 

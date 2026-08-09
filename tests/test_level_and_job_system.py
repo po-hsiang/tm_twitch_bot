@@ -48,13 +48,13 @@ def test_rejects_sheet_without_enough_rows():
         parse_jobs_sheet([["一轉"], ["10"]])
 
 
-@pytest.mark.xfail(
-    raises=IndexError,
-    strict=True,
-    reason="CODE_REVIEW.md P2-30 待修：Sheets API 常截掉尾端空白儲存格，"
-    "短列會讓 row[idx] 直接 IndexError，導致 Bot 啟動失敗",
-)
-def test_short_row_should_be_tolerated():
+# ===== 手動編輯造成的格式歪斜（P2-30）=====
+#
+# 這幾項的共同點：解析發生在啟動 bootstrap 階段，
+# 只要拋例外，Bot 就整場開台都起不來。
+
+
+def test_short_row_is_tolerated():
     raw = [
         ["一轉", "二轉"],
         ["10", "15"],
@@ -65,3 +65,44 @@ def test_short_row_should_be_tolerated():
 
     assert parsed[10]["jobs"] == ["劍士", "魔法師"]
     assert parsed[15]["jobs"] == ["騎士"]
+
+
+def test_short_stage_row_is_tolerated():
+    """表頭那一列同樣可能被截短，不能因此掛掉。"""
+    raw = [
+        ["一轉"],  # 二轉的中文序沒填
+        ["10", "15"],
+        ["劍士", "騎士"],
+    ]
+    parsed = parse_jobs_sheet(raw)
+
+    assert parsed[15]["stage"] == ""
+    assert parsed[15]["jobs"] == ["騎士"]
+
+
+def test_every_row_shorter_than_the_header_still_parses():
+    raw = [
+        ["一轉", "二轉", "三轉"],
+        ["10", "15", "20"],
+        ["劍士"],
+        ["魔法師", "巫師"],
+    ]
+    parsed = parse_jobs_sheet(raw)
+
+    assert parsed[10]["jobs"] == ["劍士", "魔法師"]
+    assert parsed[15]["jobs"] == ["巫師"]
+    assert parsed[20]["jobs"] == []  # 沒有職業，但不該讓整張表解析失敗
+
+
+@pytest.mark.parametrize("bad_level", ["", "  ", "十五", "0", "-3"])
+def test_unusable_level_column_is_skipped_not_fatal(bad_level, caplog):
+    """等級門檻打錯只該少一個轉職階段，不該讓 Bot 起不來。"""
+    raw = [
+        ["一轉", "二轉"],
+        ["10", bad_level],
+        ["劍士", "騎士"],
+    ]
+    parsed = parse_jobs_sheet(raw)
+
+    assert list(parsed) == [10]
+    assert "已略過該欄" in caplog.text  # 壞掉的欄位必須留下痕跡
