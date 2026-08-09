@@ -165,7 +165,12 @@ class TaskScheduler:
 # ---------- 主程式呼叫過來的任務排程 ---------- #
 
 
-def schedule_task(send_func):
+def schedule_task(send_func) -> TaskScheduler:
+    """建立所有定時任務，並把排程器交還給呼叫端。
+
+    過去 TaskScheduler 只是這裡的區域變數，關機時沒有人能取消它，
+    Ctrl+C 之後 task 只會被直譯器硬砍（見 CODE_REVIEW P1-13）。
+    """
     task_scheduler = TaskScheduler()
 
     # 定期喝水
@@ -182,6 +187,8 @@ def schedule_task(send_func):
     task_scheduler.add_daily_job(
         day_change, time_str="23:59", kwargs={"send_func": send_func}
     )
+
+    return task_scheduler
 
 
 async def water(*args, **kwargs):

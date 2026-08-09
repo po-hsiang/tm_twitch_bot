@@ -14,13 +14,16 @@ from tm_twitch_bot.scripts.task_scheduler import schedule_task
 from tm_twitch_bot.scripts.vip_system import vip_system
 from tm_twitch_bot.scripts import command_dispatcher
 from tm_twitch_bot.scripts import level_and_job_system
+from tm_twitch_bot.utils.http_utils import close_async_client
 from tm_twitch_bot.utils.chat_sender import chat_sender
 from tm_twitch_bot.utils.token_manager import token_manager
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
 from typing import Tuple
 import platform
+import inspect
 import asyncio
+import signal
 import httpx
 
 
@@ -36,6 +39,9 @@ CHANNEL = twitch_config["channel"]
 # 開台／關台事件的 log 標記。刻意用純 ASCII，方便日後 grep：
 #   grep STREAM-EVENT logs/tm_twitch_bot.log
 STREAM_EVENT_TAG = "[STREAM-EVENT]"
+
+SHUTDOWN_TIMEOUT = 10  # 收尾的總時限（秒）。超過就放棄，不能讓關機卡住
+SIGNAL_POLL_SECONDS = 0.5
 
 
 # ---------- 工具 ----------
@@ -85,6 +91,8 @@ class MyBot(commands.Bot):
         # 過去它只是 event_ready 的區域變數，方法一返回就沒有任何強參考撐著，
         # 隨時可能被 GC 回收 —— 很可能就是「別人兌換收不到事件」的主因。
         self.eventsub_ws: EventSubWebsocket | None = None
+        # 定時排程器。關機時要能取消，因此留在這裡而不是 event_ready 的區域變數。
+        self.scheduler = None
         # twitchio 每次成功連線（含斷線重連）都會觸發 event_ready，
         # 一次性初始化必須自行去重，否則排程與訂閱會隨重連次數倍增。
         self._bootstrapped = False
@@ -198,7 +206,7 @@ class MyBot(commands.Bot):
             logger.info(f"【測試測試】Bot 已上線！")
 
         # === 這裡呼叫任務排程器 ===
-        schedule_task(self.send_to_channel)
+        self.scheduler = schedule_task(self.send_to_channel)
 
     async def event_message(self, message):
         if message.echo:
@@ -257,6 +265,75 @@ class MyBot(commands.Bot):
             logger.warning(f"{user_name} 換了頭香！")
 
 
+# ---------- 收尾 ----------
+async def shutdown(*, bot=None, twitch=None, scheduler=None) -> None:
+    """依序關閉所有資源。
+
+    順序是刻意的：先停掉「還會產生新工作的東西」（排程、EventSub），
+    再關連線（IRC、Helix、httpx 連線池）。反過來的話，
+    排程可能在連線關掉之後才醒來，留下一串沒有意義的錯誤。
+
+    每一步各自 try —— 任何一步失敗都不能擋住後面的清理，
+    收尾程式最怕的就是「第一步炸掉，剩下全部沒跑」。
+    """
+    steps: list[tuple[str, object]] = []
+    if scheduler is not None:
+        steps.append(("取消定時排程", scheduler.cancel_all))
+    if bot is not None and getattr(bot, "eventsub_ws", None) is not None:
+        steps.append(("關閉 EventSub WebSocket", bot.eventsub_ws.stop))
+    if bot is not None:
+        steps.append(("關閉 IRC 連線", bot.close))
+    if twitch is not None:
+        steps.append(("關閉 Twitch API", twitch.close))
+    steps.append(("關閉 httpx 連線池", close_async_client))
+
+    for label, action in steps:
+        try:
+            result = action()
+            if inspect.isawaitable(result):
+                await result
+        except Exception as e:
+            logger.error(f"收尾步驟「{label}」失敗，繼續下一步: {type(e).__name__}: {e}")
+        else:
+            logger.info(f"收尾完成：{label}")
+
+
+def _install_signal_handlers(stop: asyncio.Event) -> None:
+    """把 SIGINT／SIGTERM 轉成一個停止事件。
+
+    刻意不用 loop.add_signal_handler()：Windows 的 asyncio 不支援它。
+    第一次收到訊號就把處理器還原成預設值 —— 萬一收尾卡住，
+    再按一次 Ctrl+C 仍然能強制結束，不會變成殺不掉的程序。
+    """
+    loop = asyncio.get_running_loop()
+
+    def _request_stop(signum, _frame):
+        logger.warning(f"收到訊號 {signum}，開始收尾（再按一次可強制結束）")
+        try:
+            signal.signal(signum, signal.SIG_DFL)
+        except (ValueError, OSError):
+            pass
+        loop.call_soon_threadsafe(stop.set)
+
+    for sig in (signal.SIGINT, getattr(signal, "SIGTERM", None)):
+        if sig is None:
+            continue
+        try:
+            signal.signal(sig, _request_stop)
+        except (ValueError, OSError, RuntimeError) as e:
+            logger.warning(f"無法安裝 {sig!r} 的訊號處理器，略過: {e}")
+
+
+async def _keep_signals_responsive() -> None:
+    """讓事件圈定期醒來，訊號處理器才有機會被執行。
+
+    Windows 的 selector 事件圈閒置時會卡在 select()，Ctrl+C 不會把它叫醒；
+    沒有這個心跳，關機可能要等到下一則聊天訊息進來才會生效。
+    """
+    while True:
+        await asyncio.sleep(SIGNAL_POLL_SECONDS)
+
+
 # ---------- 主協程 ----------
 async def main():
     ok, cid_in_token = await validate(token_manager.access_token)
@@ -290,14 +367,39 @@ async def main():
     await command_dispatcher.load_command_set()
     await level_and_job_system.load_job_config()
 
+    bot = MyBot(twitch)
+    stop = asyncio.Event()
+    _install_signal_handlers(stop)
+
+    bot_task = asyncio.create_task(bot.start(), name="twitchio_bot")
+    stop_task = asyncio.create_task(stop.wait(), name="stop_signal")
+    ticker = asyncio.create_task(_keep_signals_responsive(), name="signal_ticker")
+
     try:
-        bot = MyBot(twitch)
-        await bot.start()
-    except Exception as e:
-        logger.error(f"Bot 錯誤: {e}")
+        # 誰先結束都算：Bot 自己掛掉，或使用者按了 Ctrl+C
+        await asyncio.wait({bot_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+        if bot_task.done() and not bot_task.cancelled():
+            exc = bot_task.exception()
+            if exc is not None:
+                logger.error(f"Bot 意外終止: {type(exc).__name__}: {exc}")
+            else:
+                logger.warning("Bot 自行結束連線")
+        else:
+            logger.warning("收到停止指令，開始關閉 Bot")
     finally:
-        logger.warning(f"Bot finally 結束")
-        sys.exit()
+        stop_task.cancel()
+        ticker.cancel()
+        try:
+            await asyncio.wait_for(
+                shutdown(bot=bot, twitch=twitch, scheduler=bot.scheduler),
+                timeout=SHUTDOWN_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"收尾超過 {SHUTDOWN_TIMEOUT} 秒仍未完成，直接結束")
+        bot_task.cancel()
+        # 這裡刻意不呼叫 sys.exit()：它會直接中止協程，
+        # 讓上面剛寫好的收尾在某些路徑下反而跑不完。
+        logger.warning("Bot 已完成收尾")
 
 
 if __name__ == "__main__":
