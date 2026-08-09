@@ -24,6 +24,7 @@
 - [設定檔說明](#設定檔說明)
 - [資料儲存](#資料儲存)
 - [測試](#測試)
+- [日誌](#日誌)
 - [注意事項](#注意事項)
 
 ---
@@ -108,6 +109,8 @@ tm_twitch_bot/
 ├── uv.lock
 ├── .env                        # 機敏資訊（token / secret / api key），不進版控
 ├── .env.example                # .env 範本
+├── .github/workflows/ci.yml    # CI：uv sync + compileall + pytest
+├── logs/                       # 執行期日誌（輪替，不進版控）
 ├── docs/
 │   ├── CODE_REVIEW.md          # 程式碼健檢報告（缺陷清單與處置狀態）
 │   └── project_report.html     # 互動式專案報告（架構圖／流程圖／指令表）
@@ -146,7 +149,7 @@ tm_twitch_bot/
 │       ├── yaml_utils.py           # 設定載入（YAML + .env 合併）
 │       ├── token_manager.py        # Token 唯一來源（刷新後同步記憶體與 .env）
 │       ├── http_utils.py           # 帶重試的非同步 HTTP 請求（httpx.AsyncClient）
-│       ├── log_utils.py            # 彩色 Logger
+│       ├── log_utils.py            # Logger（主控台彩色 + 檔案輪替）
 │       ├── probability_utils.py    # 加權隨機
 │       └── ...
 └── tests/                      # pytest 測試（全離線，不需啟動微服務）
@@ -154,7 +157,13 @@ tm_twitch_bot/
     ├── test_command_dispatcher.py
     ├── test_greeter.py
     ├── test_role_system.py
-    └── test_level_and_job_system.py
+    ├── test_role_name_lookup.py
+    ├── test_level_and_job_system.py
+    ├── test_message_controller.py
+    ├── test_task_scheduler.py
+    ├── test_vip_system.py
+    ├── test_mongo_find_contract.py
+    └── test_log_utils.py
 ```
 
 ---
@@ -324,9 +333,27 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 uv run pytest
 ```
 
-測試全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數。
+目前 89 項測試，約 0.5 秒跑完。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-目前覆蓋 `command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級與轉職邊界）、`level_and_job_system`（轉職表解析）。尚未覆蓋的部分與補齊順序列在 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 的 P2-19。
+覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）。
+
+尚未覆蓋的部分與補齊順序列在 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 的 P2-19。
+
+### CI
+
+`push`（master／main）、`pull_request` 與手動觸發時，GitHub Actions 會跑 `uv sync --locked --dev` → `compileall` → `pytest`（`.github/workflows/ci.yml`）。因為測試全離線，CI 不需要任何 secrets。
+
+> Private repo 的狀態徽章對未登入者無法顯示，因此這裡不放 badge，請直接看 repo 的 Actions 頁籤。
+
+---
+
+## 日誌
+
+主控台輸出彩色訊息，同時寫入 `logs/tm_twitch_bot.log`（5 MB 一輪、保留 5 份、UTF-8）。
+
+- 想改存放位置：設定環境變數 `TM_BOT_LOG_DIR`
+- 落檔失敗（權限不足等）只會警告，不會讓 Bot 起不來
+- log 檔內容不含 ANSI 色碼，可直接 grep
 
 ---
 
@@ -338,4 +365,5 @@ uv run pytest
 - **指令集熱更新限制**：指令集於啟動時載入一次，修改試算表後需重啟 Bot 才會生效。
 - **twitchio 版本相依**：`main.py` 的 token 同步機制寫入了 twitchio 的私有屬性（`_http.token`、`_connection._token`）。套件已釘選 `twitchio>=2.10,<3`，升級時務必一併驗證。
 - **待實測**：忠誠點數兌換偶爾收不到其他使用者事件的問題，已修正 EventSub 物件被 GC 回收的疑似成因（CODE_REVIEW P0-3），但**尚未於正式頻道驗證**，上線後請實際請他人兌換一次確認。
+- **營運方式是刻意的**：Bot 採「開台時手動啟動」，不容器化、不設開機自啟——用「進程不存在」保證關台期間沒有人能刷經驗值與金幣。因此 `!吃`、`!梗`、招呼名單「每場開台重來一次」是預期行為，不是快取失效缺陷。完整的取捨分析（含 Twitch `stream.online` / `stream.offline` 事件的可行性與限制）見 [`docs/CODE_REVIEW.md` 附錄 A](docs/CODE_REVIEW.md#附錄-a營運架構手動啟動-vs-常駐服務)。
 - **待處理缺陷**：完整清單與優先序見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md)。

@@ -399,6 +399,87 @@
     .sug-body{padding:2px 14px 18px}
   }
 
+  /* 優化建議的處置狀態徽章 */
+  .sug-st{
+    font-family:var(--mono);font-size:12.5px;font-weight:700;
+    padding:3px 10px;border-radius:999px;flex-shrink:0;white-space:nowrap;
+  }
+  .sug-st.done{background:rgba(125,184,255,.16);color:var(--sev-low);border:1px solid rgba(125,184,255,.45)}
+  .sug-st.partial{background:var(--sev-mid-bg);color:var(--sev-mid);border:1px solid rgba(255,210,87,.45)}
+  .sug.st-done .sug-title{color:var(--faint);text-decoration:line-through;text-decoration-thickness:1px}
+  .sug.st-done.open .sug-title{color:var(--accent);text-decoration:none}
+  @media (max-width:760px){ .sug-st{display:none} }
+
+  /* ============ 營運架構決策 ============ */
+  .ops-block{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:30px;margin-top:22px;
+  }
+  .ops-h{
+    font-size:21px;font-weight:700;letter-spacing:-.015em;
+    color:#ffffffee;margin-bottom:14px;
+  }
+  .ops-p{color:var(--muted);font-size:17.5px;max-width:82ch;margin-bottom:12px}
+  .ops-p:last-child{margin-bottom:0}
+  .ops-p strong{color:var(--text)}
+  .ops-p strong.hl{color:var(--accent)}
+  .ops-list{margin:12px 0 0 0;padding-left:22px;color:var(--muted);font-size:16.5px}
+  .ops-list li{margin-bottom:9px;max-width:80ch}
+  .ops-list li:last-child{margin-bottom:0}
+  .ops-list li::marker{color:var(--accent)}
+  .ops-list strong{color:var(--text)}
+  .ops-list strong.hl{color:var(--accent)}
+  .ops-block code,.ops-verdict code,#ops td code{
+    font-family:var(--mono);font-size:14.5px;color:var(--accent);
+    background:var(--raised);padding:1px 7px;border-radius:5px;border:1px solid var(--border);
+  }
+  .ops-note{
+    margin-top:18px;padding:14px 18px;border-left:3px solid var(--accent);
+    background:var(--accent-soft);border-radius:0 8px 8px 0;
+    color:var(--muted);font-size:16.5px;max-width:82ch;
+  }
+  #ops td.ok{color:var(--sev-low)}
+  #ops td.bad{color:var(--sev-high)}
+  .ops-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:18px}
+  .ops-card{
+    background:var(--raised);border:1px solid var(--border-strong);
+    border-radius:var(--radius);padding:24px;
+  }
+  .ops-card-h{
+    font-size:18.5px;font-weight:700;color:#ffffffee;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding-bottom:14px;border-bottom:1px solid var(--border);
+  }
+  .ops-badge{
+    font-family:var(--mono);font-size:12px;font-weight:700;padding:3px 9px;
+    border-radius:999px;letter-spacing:.02em;
+  }
+  .ops-badge.now{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-border)}
+  .ops-side{
+    margin-top:18px;font-family:var(--mono);font-size:13.5px;
+    font-weight:700;letter-spacing:.06em;
+  }
+  .ops-side.pro{color:var(--sev-low)}
+  .ops-side.con{color:var(--sev-high)}
+  .ops-verdict{
+    margin-top:22px;padding:32px;border-radius:var(--radius);
+    background:var(--surface);border:1px solid var(--accent-border);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .ops-verdict .ops-h{color:var(--accent)}
+  .ops-when{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:24px;
+    padding-top:22px;border-top:1px dashed var(--border-strong);
+  }
+  .ops-when-h{
+    font-family:var(--mono);font-size:14px;color:var(--accent);
+    font-weight:700;margin-bottom:4px;
+  }
+  @media (max-width:860px){
+    .ops-grid,.ops-when{grid-template-columns:1fr}
+    .ops-block,.ops-verdict{padding:22px 18px}
+  }
+
   /* ============ Footer ============ */
   footer{
     margin-top:88px;border-top:1px solid var(--border);
@@ -421,6 +502,7 @@
       <li><a href="#features">功能</a></li>
       <li><a href="#arch">架構</a></li>
       <li><a href="#flow">流程</a></li>
+      <li><a href="#ops">營運架構</a></li>
       <li><a href="#commands">指令</a></li>
       <li><a href="#suggestions">優化建議</a></li>
     </ul>
@@ -438,7 +520,8 @@
       </p>
       <div class="hero-tags">
         <span class="tag">Python 3.13</span>
-        <span class="tag">Poetry</span>
+        <span class="tag">uv</span>
+        <span class="tag">pytest</span>
         <span class="tag">twitchio 2.x</span>
         <span class="tag">twitchAPI 4.x</span>
         <span class="tag">FastAPI</span>
@@ -454,7 +537,9 @@
         <li><span class="k">本地微服務依賴</span><span class="v">4 個（:9091 至 :9094）</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-high)">0（tests/ 為空）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">89 項（全部離線）</span></li>
+        <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
+        <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
     </aside>
   </div>
@@ -642,6 +727,162 @@
     </div>
   </section>
 
+  <!-- ============ 營運架構 ============ -->
+  <section id="ops">
+    <div class="section-head reveal">
+      <h2>營運架構決策</h2>
+      <p>「機器人只在開台期間運作」該由誰保證？2026-08-09 的評估與結論。</p>
+    </div>
+
+    <div class="reveal prose">
+      <p>
+        目前 Bot 採<strong class="hl">本機手動啟動</strong>：不容器化、不上雲、不設開機自啟。
+        這不是還沒做，而是刻意的——用「進程不存在」來保證「關台期間不會有人洗經驗值」。
+        本節記錄的是：Twitch 到底抓不抓得到開台／關台，以及若抓得到，架構該不該改。
+      </p>
+    </div>
+
+    <div class="reveal ops-block">
+      <h3 class="ops-h">一、事實查核：開台與關台都抓得到</h3>
+      <p class="ops-p">
+        已核對 Twitch EventSub 官方文件與本機安裝的 twitchAPI 4.5.0。兩個事件都存在，
+        而且<strong class="hl">完全不需要新增任何 scope</strong>。
+        專案已有一個 EventSubWebsocket（訂閱忠誠點數），加兩行 listen 就能同時收到。
+      </p>
+      <div class="cmd-table-wrap">
+        <table>
+          <thead>
+            <tr><th>項目</th><th>stream.online</th><th>stream.offline</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>需要的 scope</td><td class="ok">不需要</td><td class="ok">不需要</td></tr>
+            <tr><td>condition</td><td><code>broadcaster_user_id</code></td><td><code>broadcaster_user_id</code></td></tr>
+            <tr><td>傳輸方式</td><td>Webhook / WebSocket</td><td>Webhook / WebSocket</td></tr>
+            <tr><td>事件內容</td><td>含 <code>started_at</code></td><td>僅頻道識別資訊</td></tr>
+            <tr><td>twitchAPI 方法</td><td><code>listen_stream_online()</code></td><td><code>listen_stream_offline()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="ops-p" style="margin-top:20px">但有四個必須先知道的限制：</p>
+      <ul class="ops-list">
+        <li><strong>WebSocket 只吃 user access token</strong>——官方明講用 app token 訂閱會失敗。本專案本來就是 user token，無影響。</li>
+        <li><strong>斷線等於訂閱全滅，事件不補發。</strong>WS 一斷，該 session 所有訂閱自動停用，重連後必須重新訂閱，斷線期間的事件<strong class="hl">永久遺失、沒有 replay</strong>。半夜斷線沒人發現，隔天開台的 online 事件可能根本收不到。</li>
+        <li><strong>stream.offline 會抖。</strong>推流短暫中斷有機會產生一對 offline → online。把關台直接當成停止服務的訊號，一次網路抖動就會誤判下台。</li>
+        <li><strong>事件有延遲</strong>，不是即時的。</li>
+      </ul>
+      <p class="ops-note">
+        後兩點屬於實務上的普遍觀察，官方文件並未承諾具體的延遲上限或抖動行為。
+        因此若真要依賴這兩個事件，必須搭配 Helix <code>Get Streams</code> 定期對帳，
+        用「當下的真實狀態」而非「收到的事件」作為單一事實來源。
+      </p>
+    </div>
+
+    <div class="reveal ops-block">
+      <h3 class="ops-h">二、需求其實有兩層</h3>
+      <p class="ops-p">
+        「只在開台期間運作」可以拆成 <strong>(a) 進程要不要一直活著</strong> 與
+        <strong>(b) 機器人要不要一直回應</strong>。現況把兩者綁在一起，但它們可以脫鉤——
+        於是實際上有三個選項，其中一個直接出局。
+      </p>
+      <div class="cmd-table-wrap">
+        <table>
+          <thead>
+            <tr><th>方案</th><th>進程</th><th>回應</th><th>評價</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>A</strong> 手動啟動</td><td>只在開台期間</td><td>只在開台期間</td><td class="ok">現況</td></tr>
+            <tr><td><strong>B</strong> 常駐 + 開關台閘門</td><td>24 小時</td><td>只在開台期間</td><td>需要新邏輯</td></tr>
+            <tr><td><strong>C</strong> 常駐、永遠回應</td><td>24 小時</td><td>24 小時</td><td class="bad">與需求衝突，排除</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="reveal ops-block">
+      <h3 class="ops-h">三、A 與 B 的優劣</h3>
+      <div class="ops-grid">
+        <div class="ops-card">
+          <div class="ops-card-h">A · 手動啟動<span class="ops-badge now">現況</span></div>
+          <div class="ops-side pro">優勢</div>
+          <ul class="ops-list">
+            <li><strong>需求由架構天然保證，零信任成本。</strong>進程不在就不可能有人洗錢，不依賴任何判斷邏輯的正確性。</li>
+            <li><strong>「每場開台固定內容」是免費的。</strong><code>!吃</code>、<code>!梗</code>、招呼名單的快取隨進程生死，語意剛好就是「本場」。</li>
+            <li>除錯最直接，終端機就在眼前。</li>
+            <li>零基礎設施、零常態成本。</li>
+            <li>改完程式下次開台即生效，沒有部署流程。</li>
+          </ul>
+          <div class="ops-side con">劣勢</div>
+          <ul class="ops-list">
+            <li>要記得手動開，忘了就整場沒有機器人。</li>
+            <li><strong>中途掛掉沒有人救</strong>——沒有 supervisor，死了就死了。</li>
+            <li><strong>綁在一台機器上。</strong>四個本機微服務的啟動方式完全沒有被記錄，重灌或換機就要重新考古。</li>
+            <li>長期任務無處可掛（VIP 到期當天移除、每日統計）。</li>
+            <li>開台前幾分鐘有空窗，觀眾比機器人早到。</li>
+          </ul>
+        </div>
+        <div class="ops-card">
+          <div class="ops-card-h">B · 常駐 + 開關台閘門</div>
+          <div class="ops-side pro">優勢</div>
+          <ul class="ops-list">
+            <li>不會忘記開，而且開台當下就已在線，沒有空窗。</li>
+            <li>可以自動重啟，掛掉自己爬起來。</li>
+            <li>長期排程有地方掛，VIP 每日到期掃描變成自然的事。</li>
+            <li>可以在關台後做事（結算當日排行、產出數據）。</li>
+            <li>容器化會強迫把四個微服務的啟動方式寫下來。</li>
+          </ul>
+          <div class="ops-side con">劣勢</div>
+          <ul class="ops-list">
+            <li><strong>需求從架構保證退化成邏輯保證。</strong>閘門有 bug 就會「沒開台卻在發經驗值」，而這件事頻道主看不到——正是最在意的失效模式。</li>
+            <li>狀態偵測有一整圈邊界情況：斷線不補發、offline 抖動、事件延遲，都要靠對帳兜底。</li>
+            <li>「每場固定內容」得自己實作，由 <code>stream.online</code> 觸發清快取。</li>
+            <li>持續佔用電力、記憶體、Atlas 連線。</li>
+            <li>改版要重新部署，新增基礎設施維護面。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal ops-verdict">
+      <h3 class="ops-h">結論：暫時維持手動啟動，但補上 A 真正會痛的地方</h3>
+      <p class="ops-p">
+        A 的劣勢裡真正嚴重的是「掛掉沒人救」與「綁在一台機器上」，
+        而<strong class="hl">這兩點都不需要改成常駐就能解</strong>——
+        加一層 supervisor（樸素到只是一個 while 迴圈的 .bat 也行），
+        以及把四個微服務的啟動方式記錄下來。容器化與常駐是兩件事，可以只要前者。
+      </p>
+      <p class="ops-p">
+        反過來，B 的最大劣勢正好打在頻道主最在意的地方。
+        用「進程不存在」保證需求是零成本、零 bug 的；換成程式邏輯，
+        就換成了需要測試與維運的保證。在還沒有非常駐不可的需求之前，不值得做這個交換。
+      </p>
+      <div class="ops-when">
+        <div>
+          <div class="ops-when-h">什麼時候該重新評估</div>
+          <ul class="ops-list">
+            <li>出現任何<strong>離線也生效</strong>的權益（例如 VIP 要在到期當天就移除）</li>
+            <li>開台頻率變高，或有其他人代管，忘記開的成本上升</li>
+            <li>想累積跨場次的數據</li>
+          </ul>
+        </div>
+        <div>
+          <div class="ops-when-h">若真要切換，最小順序</div>
+          <ul class="ops-list">
+            <li>先訂閱 online / offline，<strong>只寫 log 不改行為</strong>，跑幾週觀察可靠度與抖動</li>
+            <li>加 Helix <code>Get Streams</code> 定期對帳，確立單一事實來源</li>
+            <li>才把閘門接到 <code>handle_message</code> 最前面</li>
+            <li>最後才容器化與開機自啟</li>
+          </ul>
+        </div>
+      </div>
+      <p class="ops-p" style="margin-top:22px">
+        <strong class="hl">還有一個折衷方案：</strong>拆成兩個進程——
+        一個常駐的小型 worker 只負責 VIP 到期掃描與每日統計，聊天 Bot 仍然手動啟動。
+        這樣既拿到常駐的好處，又完整保留「進程不存在＝絕對不會回應」的強保證，
+        閘門邏輯根本不需要存在。以目前的專案規模，這很可能是投報率最高的路。
+      </p>
+    </div>
+  </section>
+
   <!-- ============ 指令 ============ -->
   <section id="commands">
     <div class="section-head reveal">
@@ -684,7 +925,12 @@
   <section id="suggestions">
     <div class="section-head reveal">
       <h2>優化建議</h2>
-      <p>依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。</p>
+      <p>
+        依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
+        <br>
+        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-09）：10 項已修正、2 項部分處理。</span>
+        更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
+      </p>
     </div>
     <div class="reveal">
       <div class="sug-toolbar" id="sugToolbar">
@@ -702,8 +948,8 @@
 
 <footer>
   <div class="wrap">
-    <span>tm_twitch_bot 專案技術報告 · 2026-07-10</span>
-    <span>由系統架構審閱產出 · <code>project_report.html</code></span>
+    <span>tm_twitch_bot 專案技術報告 · 2026-07-10 初版 · 2026-08-09 更新</span>
+    <span>由系統架構審閱產出 · <code>project_report.html</code> · 缺陷清單見 <code>CODE_REVIEW.md</code></span>
   </div>
 </footer>
 
@@ -756,7 +1002,7 @@
     eventsub: {
       title: "EventSub WebSocket（twitchAPI）", file: "main.py",
       desc: "訂閱 channel_points_custom_reward_redemption_add 事件，接收忠誠點數兌換通知。",
-      points: ["event_ready 時建立 WebSocket 並註冊 on_points callback", "目前僅記錄 log，尚未接上實際獎勵邏輯", "已知問題：偶爾收不到其他使用者的兌換事件（TODO）"]
+      points: ["event_ready 時建立 WebSocket 並註冊 on_points callback", "stream.online / stream.offline 也可在此訂閱，不需額外 scope（見「營運架構決策」）", "已修正 WebSocket 物件無強參考、可能被 GC 回收的問題；「收不到他人兌換事件」待正式頻道實測"]
     },
     helix: {
       title: "Helix API（VIP 管理）", file: "svc_client/twitch_vips_api.py",
@@ -765,8 +1011,8 @@
     },
     main: {
       title: "MyBot 進入點", file: "main.py",
-      desc: "程式進入點：驗證 access token（失效時用 refresh token 換新並寫回 YAML）、建立 twitchAPI 物件、啟動 Bot、註冊 EventSub 與排程任務。",
-      points: ["Windows 下切換為 SelectorEventLoop 政策", "vip_system.set_api_context 注入 client_id / broadcaster_id / token getter", "啟動時執行一次 VIP 過期掃描"]
+      desc: "程式進入點：驗證 access token（失效時用 refresh token 換新並寫回 .env）、建立 twitchAPI 物件、啟動 Bot、註冊 EventSub 與排程任務。",
+      points: ["Windows 下切換為 SelectorEventLoop 政策", "vip_system.set_api_context 注入 client_id / broadcaster_id / token getter", "啟動時執行一次 VIP 過期掃描（刻意不做每日排程，理由見「營運架構決策」）", "token 刷新後透過 listener 同步進 twitchio 並重連 IRC"]
     },
     msgctrl: {
       title: "訊息控制器", file: "scripts/message_controller.py",
@@ -936,7 +1182,7 @@
 
   /* ---------- 優化建議 ---------- */
   var SUGGESTIONS = [
-    {cat:"sec", sev:"high", title:"設定檔存放明文機密，且已隨專案流通",
+    {cat:"sec", sev:"high", st:"done", title:"設定檔存放明文機密，且已隨專案流通",
      desc:"config_common.yaml 內含 Twitch access / refresh token、client_secret 與 OpenAI API key 的明文。任何拿到這份專案的人都能直接冒用頻道身分與計費額度。",
      fix:"改用環境變數或密鑰管理服務（Vault / Secret Manager）；將設定檔加入 .gitignore 並提供 config.example.yaml 範本；懷疑外洩時立即輪替 Twitch Client Secret 與 OpenAI API Key。",
      files:["config/config_common.yaml","utils/yaml_utils.py"]},
@@ -944,15 +1190,15 @@
      desc:"command_dispatcher._load_function 依 Sheets 內容以 importlib 載入「任意 module.func」。具有試算表編輯權的人等同能在 Bot 主機上執行任意 Python 函數，試算表成為隱形的信任邊界。",
      fix:"改為顯式的函數註冊表（registry dict），或至少白名單限制模組前綴必須是 tm_twitch_bot.*，並在載入時記錄稽核 log。",
      files:["scripts/command_dispatcher.py"]},
-    {cat:"sec", sev:"mid", title:"使用者輸入直接拼進 MongoDB 正規表達式",
+    {cat:"sec", sev:"mid", st:"done", title:"使用者輸入直接拼進 MongoDB 正規表達式",
      desc:"find_by_name 把 !pk 的目標名稱直接放進 $regex 的 ^{name}$。名稱含 (、[、* 等特殊字元時查詢會失敗或產生非預期比對。",
      fix:"以 re.escape(name) 跳脫後再組 regex，或改用大小寫不敏感的精確比對欄位。",
      files:["scripts/role_system.py"]},
-    {cat:"bug", sev:"high", title:"sweep_expired 缺少 return，停用時仍執行掃描",
+    {cat:"bug", sev:"high", st:"done", title:"sweep_expired 缺少 return，停用時仍執行掃描",
      desc:"vip_system.sweep_expired 開頭檢查 cfg.enabled 為否時只記了一行 warning，沒有 return，後續的過期掃描與 VIP 移除照常執行，與設定語意相反。",
      fix:"在 logger.warning 之後補上 return。",
      files:["scripts/vip_system.py:151"]},
-    {cat:"bug", sev:"high", title:"Token 自動刷新後，VIP 系統拿到的是舊 token",
+    {cat:"bug", sev:"high", st:"done", title:"Token 自動刷新後，VIP 系統拿到的是舊 token",
      desc:"twitchAPI 自動刷新 token 時 callback（save_tokens）只把新值寫回 YAML，沒有更新模組層級的 ACCESS 變數。vip_system 的 token_getter 是 lambda: ACCESS，之後兌換 VIP 會以過期 token 呼叫 Helix 而收到 401。",
      fix:"建立單一的 TokenManager 物件保存最新 token，refresh callback 與 token_getter 都指向同一實例；twitchio 的聊天連線 token 也應納入同一機制。",
      files:["main.py:98","utils/yaml_utils.py"]},
@@ -960,11 +1206,11 @@
      desc:"_end_game 是排程 callback，但「沒有人參加」「找不到參加者資料」兩種情況用 return 字串處理，沒有任何地方接收這個回傳值，觀眾看不到遊戲結束的訊息。",
      fix:"錯誤情況改為 await send_func(訊息)，與得獎訊息走同一條路。",
      files:["games/gold_rush_game.py:65"]},
-    {cat:"bug", sev:"mid", title:"不成對的引號會讓整句訊息處理中斷",
+    {cat:"bug", sev:"mid", st:"done", title:"不成對的引號會讓整句訊息處理中斷",
      desc:"dispatch_command 用 shlex.split 切割輸入，遇到單獨的引號（例如觀眾只打了一個 \" ）會拋出 ValueError，例外一路傳回 handle_message，該句訊息的獎勵與回覆全部消失。",
      fix:"以 try/except 包住 shlex.split，失敗時退回 content.split() 的簡單切割。",
      files:["scripts/command_dispatcher.py:125"]},
-    {cat:"bug", sev:"low", title:"greeter 存在不可達的程式碼",
+    {cat:"bug", sev:"low", st:"done", title:"greeter 存在不可達的程式碼",
      desc:"greet_user 的第一個 return 之後還有一行使用冒險台詞池的 return，永遠不會執行；但冒險台詞仍在啟動時從 Sheets 載入，白白多一次網路呼叫。",
      fix:"擇一保留：刪除死碼與對應的資料載入，或恢復隨機台詞功能。",
      files:["scripts/greeter.py:35"]},
@@ -972,15 +1218,15 @@
      desc:"其他查詢方法都會轉成 Character 物件，唯獨這個方法直接回傳 mongo 的 list 結果，呼叫端若比照使用 .gold 等屬性會出錯。",
      fix:"比照 find_by_user_id 以 from_dict 包裝後回傳。",
      files:["scripts/role_system.py:130"]},
-    {cat:"bug", sev:"low", title:"validate() 的型別註記與實際回傳不符",
+    {cat:"bug", sev:"low", st:"done", title:"validate() 的型別註記與實際回傳不符",
      desc:"函數註記回傳 str，實際回傳 (bool, str) tuple；失敗分支回傳 False, \"\" 的寫法也容易誤讀。",
      fix:"更正為 -> tuple[bool, str]，並統一 return (False, \"\") 的寫法。",
      files:["main.py:38"]},
-    {cat:"perf", sev:"high", title:"同步 HTTP 呼叫阻塞 asyncio 事件圈",
+    {cat:"perf", sev:"high", st:"done", title:"同步 HTTP 呼叫阻塞 asyncio 事件圈",
      desc:"所有 svc_client 走 requests 同步請求，重試間隔 time.sleep(5)、讀取逾時高達 600 秒。這些呼叫發生在 async 訊息處理路徑上，最壞情況整個 Bot（含聊天心跳與排程）會被凍結十分鐘以上。",
      fix:"將 svc_client 改為 httpx.AsyncClient（專案已相依 httpx），或以 asyncio.to_thread 包裝既有同步呼叫；重試等待改用 asyncio.sleep，並將讀取逾時降到合理秒數。",
      files:["utils/http_utils.py","svc_client/*"]},
-    {cat:"perf", sev:"high", title:"模組載入階段就發出網路請求",
+    {cat:"perf", sev:"high", st:"done", title:"模組載入階段就發出網路請求",
      desc:"command_dispatcher、greeter、daily pickers、level_and_job_system、youtube client 都在 import 時呼叫微服務。任何一個服務沒開，Bot 直接在 import 階段 crash；啟動變慢，單元測試也無法在離線環境進行。",
      fix:"改為 lazy 初始化（首次使用時載入）或集中在 main() 的明確 bootstrap 步驟，並針對個別服務失敗提供降級行為。",
      files:["scripts/command_dispatcher.py","scripts/greeter.py","svc_client/youtube.py"]},
@@ -988,11 +1234,11 @@
      desc:"_active_vip_count 用 find(limit=0) 把所有有效 VIP 文件抓回來再 len()，資料量成長後每次 !vip 都是一次全表傳輸。",
      fix:"微服務端新增 count 端點（count_documents），Bot 端改呼叫計數。",
      files:["scripts/vip_system.py:63"]},
-    {cat:"perf", sev:"mid", title:"各式快取缺乏失效機制",
+    {cat:"perf", sev:"mid", st:"partial", title:"各式快取缺乏失效機制",
      desc:"YouTube 歌單只在啟動時抓一次；!吃 / !梗 名為 daily 實際上只在重啟時重置；_last_cmd_ts 與 _last_message 字典無上限成長。長時間運行下資料越來越舊、記憶體緩慢上升。",
      fix:"建立統一的 TTL 快取工具；在 task_scheduler 排一個每日重置任務清空 food / meme / 招呼名單，並定期修剪冷卻字典。",
      files:["svc_client/youtube.py","scripts/daily_food_picker.py","scripts/message_controller.py"]},
-    {cat:"perf", sev:"mid", title:"斷線或例外後 Bot 直接死亡，無自動重連",
+    {cat:"perf", sev:"mid", st:"partial", title:"斷線或例外後 Bot 直接死亡，無自動重連",
      desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。",
      fix:"外層加 supervisor 迴圈搭配指數退避重連；sweep_expired 改由 task_scheduler 每日執行；區分可重試與致命錯誤。",
      files:["main.py:179","scripts/vip_system.py"]},
@@ -1004,7 +1250,7 @@
      desc:"專案同時相依 twitchio 2.x（聊天）與 twitchAPI 4.x（EventSub / Helix）。twitchio 2.x 已 EOL，且兩套件的 token 管理彼此獨立，是刷新不同步問題的根源之一。",
      fix:"評估升級 twitchio 3.x，或統一改用 twitchAPI 內建的 Chat 功能，收斂為單一相依與單一 token 生命週期。",
      files:["pyproject.toml","main.py"]},
-    {cat:"quality", sev:"mid", title:"tests/ 目錄為空，核心邏輯無測試保護",
+    {cat:"quality", sev:"mid", st:"done", title:"tests/ 目錄為空，核心邏輯無測試保護",
      desc:"升級經驗計算、指令解析、遊戲規則、轉職表解析等大多是純函數，非常適合單元測試，目前完全沒有覆蓋。",
      fix:"先為 role_system.gain_exp、command_dispatcher 解析、guess_number / gold_rush 規則補 pytest；搭配前述的 lazy 初始化改造，測試就不需要真的連微服務。",
      files:["tests/"]},
@@ -1019,17 +1265,21 @@
   ];
   var SEV_LABEL = {high:"高", mid:"中", low:"低"};
   var CAT_LABEL = {sec:"安全性", bug:"正確性", perf:"效能與穩定性", quality:"程式品質"};
+  var ST_LABEL = {done:"已修正", partial:"部分處理"};
   var sugList = document.getElementById("sugList");
   SUGGESTIONS.forEach(function(s, i){
     var item = document.createElement("div");
     item.className = "sug";
     item.setAttribute("data-cat", s.cat);
+    if (s.st) item.classList.add("st-" + s.st);
     var filesHtml = s.files.map(function(f){ return "<code>" + f + "</code>"; }).join("");
+    var stHtml = s.st ? '<span class="sug-st ' + s.st + '">' + ST_LABEL[s.st] + '</span>' : "";
     item.innerHTML =
       '<button class="sug-head" type="button" aria-expanded="false">' +
         '<span class="sev ' + s.sev + '">' + SEV_LABEL[s.sev] + '</span>' +
         '<span class="sug-cat">' + CAT_LABEL[s.cat] + '</span>' +
         '<span class="sug-title">' + s.title + '</span>' +
+        stHtml +
         '<span class="sug-arrow">▶</span>' +
       '</button>' +
       '<div class="sug-body">' +
