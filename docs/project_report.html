@@ -537,7 +537,7 @@
         <li><span class="k">本地微服務依賴</span><span class="v">4 個（:9091 至 :9094）</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">89 項（全部離線）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">107 項（全部離線）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -731,7 +731,7 @@
   <section id="ops">
     <div class="section-head reveal">
       <h2>營運架構決策</h2>
-      <p>「機器人只在開台期間運作」該由誰保證？2026-08-09 的評估與結論。</p>
+      <p>「機器人只在開台期間運作」該由誰保證？2026-08-09 的評估、結論與已上線的觀測。</p>
     </div>
 
     <div class="reveal prose">
@@ -811,11 +811,11 @@
             <li>零基礎設施、零常態成本。</li>
             <li>改完程式下次開台即生效，沒有部署流程。</li>
           </ul>
-          <div class="ops-side con">劣勢</div>
+          <div class="ops-side con">劣勢（已依實際使用習慣重新評估）</div>
           <ul class="ops-list">
-            <li>要記得手動開，忘了就整場沒有機器人。</li>
-            <li><strong>中途掛掉沒有人救</strong>——沒有 supervisor，死了就死了。</li>
-            <li><strong>綁在一台機器上。</strong>四個本機微服務的啟動方式完全沒有被記錄，重灌或換機就要重新考古。</li>
+            <li><s>要記得手動開</s> → <strong class="hl">不成立</strong>：開台前一定會開，忘了觀眾也會提醒。</li>
+            <li><s>中途掛掉沒有人救</s> → <strong class="hl">影響可接受</strong>：家用電腦每天重開機，且「當次開台沒機器人就算了」。</li>
+            <li><strong>綁在一台機器上。</strong>四個本機微服務的啟動方式完全沒有被記錄，重灌或換機就要重新考古。<strong class="hl">這是唯一真正嚴重的風險</strong>——前兩點有使用習慣兜底，這點沒有。</li>
             <li>長期任務無處可掛（VIP 到期當天移除、每日統計）。</li>
             <li>開台前幾分鐘有空窗，觀眾比機器人早到。</li>
           </ul>
@@ -843,12 +843,12 @@
     </div>
 
     <div class="reveal ops-verdict">
-      <h3 class="ops-h">結論：暫時維持手動啟動，但補上 A 真正會痛的地方</h3>
+      <h3 class="ops-h">結論：維持 A 手動啟動，唯一該補的是部署設定</h3>
       <p class="ops-p">
-        A 的劣勢裡真正嚴重的是「掛掉沒人救」與「綁在一台機器上」，
-        而<strong class="hl">這兩點都不需要改成常駐就能解</strong>——
-        加一層 supervisor（樸素到只是一個 while 迴圈的 .bat 也行），
-        以及把四個微服務的啟動方式記錄下來。容器化與常駐是兩件事，可以只要前者。
+        A 的五項劣勢裡，前兩項被使用習慣消化掉了，第 4、5 項是能接受的取捨，
+        <strong class="hl">只剩「綁在一台機器上」是真的要處理的</strong>——
+        而它不需要改成常駐就能解：把四個微服務的啟動方式記錄下來即可。
+        容器化與常駐是兩件事，可以只要前者。
       </p>
       <p class="ops-p">
         反過來，B 的最大劣勢正好打在頻道主最在意的地方。
@@ -867,7 +867,7 @@
         <div>
           <div class="ops-when-h">若真要切換，最小順序</div>
           <ul class="ops-list">
-            <li>先訂閱 online / offline，<strong>只寫 log 不改行為</strong>，跑幾週觀察可靠度與抖動</li>
+            <li><strong class="hl">✅ 已完成：</strong>訂閱 online / offline，<strong>只寫 log 不改行為</strong>，跑幾週觀察可靠度與抖動</li>
             <li>加 Helix <code>Get Streams</code> 定期對帳，確立單一事實來源</li>
             <li>才把閘門接到 <code>handle_message</code> 最前面</li>
             <li>最後才容器化與開機自啟</li>
@@ -879,6 +879,37 @@
         一個常駐的小型 worker 只負責 VIP 到期掃描與每日統計，聊天 Bot 仍然手動啟動。
         這樣既拿到常駐的好處，又完整保留「進程不存在＝絕對不會回應」的強保證，
         閘門邏輯根本不需要存在。以目前的專案規模，這很可能是投報率最高的路。
+      </p>
+    </div>
+
+    <div class="reveal ops-block">
+      <h3 class="ops-h">四、觀察期：已上線的開台／關台觀測</h3>
+      <p class="ops-p">
+        已在 <code>main.py</code> 的 <code>event_ready</code> 訂閱兩個事件，
+        <strong class="hl">只寫 log、不改變任何行為</strong>。
+        兩個 handler 都各自包 try/except——觀測用的程式碼絕不能反過來影響 Bot。
+      </p>
+      <ul class="ops-list">
+        <li>handler：<code>MyBot.on_stream_online()</code> / <code>on_stream_offline()</code></li>
+        <li>log 標記：<code>[STREAM-EVENT]</code>（刻意用純 ASCII，方便 grep）</li>
+        <li>查看方式：<code>grep STREAM-EVENT logs/tm_twitch_bot.log</code></li>
+      </ul>
+      <p class="ops-p" style="margin-top:20px">觀察期要回答的三個問題：</p>
+      <div class="cmd-table-wrap">
+        <table>
+          <thead>
+            <tr><th>問題</th><th>怎麼判斷</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>事件會不會漏？</td><td>每場開台是否都有對應的一行；有沒有只有關台沒有開台的情況</td></tr>
+            <tr><td><code>offline</code> 會不會抖？</td><td>同一場直播中途是否出現「關台 → 開台」成對事件；<code>stream_id</code> 是否改變</td></tr>
+            <tr><td>延遲多久？</td><td>比對 log 時間戳、事件裡的 <code>started_at</code>、以及自己實際按下開台的時間</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="ops-note">
+        三題答案都令人滿意，才有資格進行下一步（Helix 對帳）。
+        若發現會漏、會抖，就代表 B 架構的成本比預估更高，維持 A 的決定更加穩固。
       </p>
     </div>
   </section>
@@ -928,7 +959,7 @@
       <p>
         依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
         <br>
-        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-09）：10 項已修正、2 項部分處理。</span>
+        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-09，第四輪後）：10 項已修正、2 項部分處理。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
       </p>
     </div>
@@ -1235,8 +1266,8 @@
      fix:"微服務端新增 count 端點（count_documents），Bot 端改呼叫計數。",
      files:["scripts/vip_system.py:63"]},
     {cat:"perf", sev:"mid", st:"partial", title:"各式快取缺乏失效機制",
-     desc:"YouTube 歌單只在啟動時抓一次；!吃 / !梗 名為 daily 實際上只在重啟時重置；_last_cmd_ts 與 _last_message 字典無上限成長。長時間運行下資料越來越舊、記憶體緩慢上升。",
-     fix:"建立統一的 TTL 快取工具；在 task_scheduler 排一個每日重置任務清空 food / meme / 招呼名單，並定期修剪冷卻字典。",
+     desc:"YouTube 歌單只在啟動時抓一次；_last_cmd_ts 與 _last_message 字典無上限成長。長時間運行下資料越來越舊、記憶體緩慢上升。（更正：!吃 / !梗 / 招呼名單「重啟才重置」經確認為刻意設計——Bot 只在開台時啟動，進程生命週期就等於一場直播，見「營運架構決策」。）",
+     fix:"建立統一的 TTL 快取工具；定期修剪冷卻字典。原本建議的「每日重置 food / meme / 招呼名單」已撤回，與刻意的營運設計衝突。",
      files:["svc_client/youtube.py","scripts/daily_food_picker.py","scripts/message_controller.py"]},
     {cat:"perf", sev:"mid", st:"partial", title:"斷線或例外後 Bot 直接死亡，無自動重連",
      desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。",

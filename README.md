@@ -333,9 +333,9 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 uv run pytest
 ```
 
-目前 89 項測試，約 0.5 秒跑完。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
+目前 107 項測試，約 0.5 秒跑完。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）。
+覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）。
 
 尚未覆蓋的部分與補齊順序列在 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 的 P2-19。
 
@@ -354,6 +354,7 @@ uv run pytest
 - 想改存放位置：設定環境變數 `TM_BOT_LOG_DIR`
 - 落檔失敗（權限不足等）只會警告，不會讓 Bot 起不來
 - log 檔內容不含 ANSI 色碼，可直接 grep
+- 開台／關台事件標記為 `[STREAM-EVENT]`：`grep STREAM-EVENT logs/tm_twitch_bot.log`
 
 ---
 
