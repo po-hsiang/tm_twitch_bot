@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch: # 允許在 Actions 頁面手動觸發
+
+concurrency:
+  # 同一分支連續推送時，取消還在跑的舊流程
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: 測試（Python 3.13）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 取得原始碼
+        uses: actions/checkout@v4
+
+      - name: 安裝 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 安裝 Python
+        # 版本以 pyproject.toml 的 requires-python 為準，不在此重複宣告
+        run: uv python install
+
+      - name: 安裝相依套件
+        # --locked：uv.lock 與 pyproject.toml 不同步時直接失敗，
+        # 避免 CI 偷偷用了跟本地不一樣的版本
+        run: uv sync --locked --dev
+
+      - name: 語法檢查
+        # 測試只會載入被用到的模組，沒被 import 到的檔案語法壞掉不會被發現
+        run: uv run python -m compileall -q src tests
+
+      - name: 執行測試
+        # 測試全部離線：conftest.py 會在 import 專案模組前塞入假環境變數，
+        # 因此 CI 上沒有 .env 也能跑，不需要任何 secrets
+        run: uv run pytest
