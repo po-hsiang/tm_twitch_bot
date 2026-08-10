@@ -24,6 +24,10 @@ mongodb_atlas:
 youtube:
   svc_url: http://localhost:9094
   tm_playlist_id: PLLUffVVIYEV8J2P4Tp-rkEYZEtMHHkm7o
+# n8n 上的「TM AI Agent」工作流（多客戶端共用，Discord bot 也在用）
+# webhook_secret 來自 .env 的 TM_AI_AGENT_SECRET，不放這裡
+tm_ai_agent:
+  webhook_url: https://nemesis-ozone-credible.ngrok-free.dev/webhook/tm-ai-agent
 vip_system:
   enabled: true
   gold_cost: 100

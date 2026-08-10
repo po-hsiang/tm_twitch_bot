@@ -1,3 +1,4 @@
+from tm_twitch_bot.utils.log_utils import logger
 from dotenv import load_dotenv
 from pathlib import Path
 import yaml
@@ -29,6 +30,12 @@ def load_yaml() -> dict:
     merged_config["twitch"]["access_token"] = _require_env("TWITCH_ACCESS_TOKEN")
     merged_config["twitch"]["refresh_token"] = _require_env("TWITCH_REFRESH_TOKEN")
     merged_config["openai"]["api_key"] = _require_env("OPENAI_API_KEY")
+
+    # n8n AI Agent 的 webhook secret 刻意「不」用 _require_env：
+    # 少了它只會讓 AI 問答指令失效，不該讓整個 Bot 起不來（同 P1-37 的取捨）。
+    merged_config["tm_ai_agent"]["webhook_secret"] = os.getenv("TM_AI_AGENT_SECRET", "")
+    if not merged_config["tm_ai_agent"]["webhook_secret"]:
+        logger.warning("缺少環境變數 TM_AI_AGENT_SECRET，AI 問答指令將無法使用")
     return merged_config
 
 

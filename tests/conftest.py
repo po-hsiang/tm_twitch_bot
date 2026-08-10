@@ -23,6 +23,7 @@ for _key, _value in {
     "TWITCH_ACCESS_TOKEN": "test-access-token",
     "TWITCH_REFRESH_TOKEN": "test-refresh-token",
     "OPENAI_API_KEY": "test-openai-key",
+    "TM_AI_AGENT_SECRET": "test-webhook-secret",
 }.items():
     os.environ.setdefault(_key, _value)
 
@@ -44,6 +45,19 @@ def _reset_chat_sender():
     chat_sender.reset()
     yield
     chat_sender.reset()
+
+
+@pytest.fixture(autouse=True)
+def _reset_ai_agent_queue():
+    """AI Agent 的同頻道排隊狀態是模組級的，且內含 asyncio.Lock。
+
+    Lock 會記住第一次使用時的事件圈，而 pytest-asyncio 每個測試都給一個新的。
+    """
+    from tm_twitch_bot.ai_actions import tm_ai_agent
+
+    tm_ai_agent.reset()
+    yield
+    tm_ai_agent.reset()
 
 
 @pytest.fixture
