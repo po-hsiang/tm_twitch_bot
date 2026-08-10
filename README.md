@@ -45,7 +45,11 @@
 | 抽卡（gacha_handler） | 20 Gold 十連抽，抽中稀有表情符號可獲得對應 Gold 回饋 |
 
 ### 🤖 AI 互動（ai_actions）
-- `!gpt <問題>`：具人設（虎喵粉絲）的 GPT 聊天，對話歷史存於 MongoDB，超過 token 上限自動裁切最舊問答。
+- **AI 問答**（`!GPT` / `!問`）：目前有兩條可切換的路徑，Google Sheets 指令集的「內容」欄指到哪一條就走哪一條。
+  | 路徑 | 函式 | 人設與記憶在哪 | 特色 |
+  | --- | --- | --- | --- |
+  | n8n TM AI Agent | `tm_twitch_bot.ai_actions.tm_ai_agent.ask` | n8n 端（同頻道共享最近 10 輪） | 模型會自行判斷並使用工具：台灣熱搜／頭條、網路搜尋、維基百科、計算機、日期計算、統計圖表、虎喵歌單 |
+  | OpenAI 微服務 | `tm_twitch_bot.ai_actions.gpt_chat_session.ask` | 本專案（MongoDB，超過 token 上限裁切最舊問答） | 純聊天，無工具 |
 - `!pk @對象`：取雙方角色數值，由 GPT 以結構化輸出（JSON Schema）生成戲劇化對戰旁白並判定勝負。
 
 ### 👑 VIP 系統（vip_system）
@@ -70,7 +74,7 @@
 
 ## 系統架構
 
-本專案採 **Bot 主程式 + 本地微服務** 的架構，所有外部資源（Google Sheets、OpenAI、MongoDB Atlas、YouTube）都透過獨立的本地 HTTP 服務代理，Bot 端僅保留輕量的 HTTP Client（`svc_client/`）。
+本專案採 **Bot 主程式 + 本地微服務** 的架構，所有外部資源（Google Sheets、OpenAI、MongoDB Atlas、YouTube）都透過獨立的本地 HTTP 服務代理，Bot 端僅保留輕量的 HTTP Client（`svc_client/`）。另有一條對外的 AI Agent webhook（自架 n8n，經 ngrok 靜態網域）。
 
 ```
                          ┌──────────────────────────────┐
@@ -87,17 +91,19 @@
        │              │              │              │
    svc_client     svc_client     svc_client     svc_client
        │              │              │              │
-┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼─────┐
-│GoogleSheets│ │  OpenAI    │ │ MongoDB    │ │  YouTube   │
-│  svc :9091 │ │  svc :9092 │ │ Atlas svc  │ │  svc :9094 │
-│(指令/文案) │ │ (GPT/對戰) │ │   :9093    │ │  (歌單)    │
-└────────────┘ └────────────┘ └────────────┘ └────────────┘
+┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼─────┐
+│GoogleSheets│ │  OpenAI    │ │ MongoDB    │ │  YouTube   │ │ n8n TM AI  │
+│  svc :9091 │ │  svc :9092 │ │ Atlas svc  │ │  svc :9094 │ │   Agent    │
+│(指令/文案) │ │ (GPT/對戰) │ │   :9093    │ │  (歌單)    │ │ (webhook)  │
+└────────────┘ └────────────┘ └────────────┘ └────────────┘ └────────────┘
+   本機 9091~9094（各自容器化，獨立部署）          自架 n8n，經 ngrok 對外
 ```
 
 - **twitchio**（2.x）：負責 IRC 聊天訊息的收發。
 - **twitchAPI**（4.x）：負責 EventSub WebSocket（忠誠點數兌換）與 Helix API（VIP 授予/移除）。
 - **oauth/server.py**：FastAPI 撰寫的 OAuth callback 伺服器（port 8096），用於首次取得 access / refresh token。
 - **Google Sheets 作為 CMS**：指令集、轉職表、吃啥、諧音梗、冒險台詞等內容皆存放於試算表，營運人員可直接編輯。
+- **n8n TM AI Agent**：自架 n8n 上的 AI Agent 工作流，多客戶端共用（Discord bot 也在用）。人設、對話記憶與工具呼叫都在 n8n 端，Bot 這側只負責送齊欄位、排隊、清洗回覆。
 
 ---
 
@@ -137,13 +143,15 @@ tm_twitch_bot/
 │   │   ├── guess_number_game.py    # 終極密碼
 │   │   └── gold_rush_game.py       # 一桶金
 │   ├── ai_actions/
-│   │   ├── gpt_chat_session.py     # !gpt 聊天 Session
+│   │   ├── tm_ai_agent.py          # AI 問答（轉送 n8n「TM AI Agent」）
+│   │   ├── gpt_chat_session.py     # AI 問答舊路徑（OpenAI 微服務，保留備用）
 │   │   └── duel.py                 # !pk AI 對戰旁白
 │   ├── svc_client/             # 對本地微服務/外部 API 的 HTTP Client
 │   │   ├── google_sheets.py
 │   │   ├── openai.py
 │   │   ├── mongo_atlas.py
 │   │   ├── youtube.py
+│   │   ├── n8n_ai_agent.py         # 自架 n8n 的 AI Agent webhook
 │   │   └── twitch_vips_api.py      # 直接呼叫 Twitch Helix VIP API
 │   └── utils/
 │       ├── yaml_utils.py           # 設定載入（YAML + .env 合併）
@@ -168,6 +176,7 @@ tm_twitch_bot/
     ├── test_gold_rush_game.py
     ├── test_character_persistence.py
     ├── test_sheet_bootstrap.py
+    ├── test_tm_ai_agent.py
     ├── test_shutdown.py
     ├── test_http_utils.py
     └── test_log_utils.py
@@ -289,6 +298,7 @@ TWITCH_CLIENT_SECRET=...
 TWITCH_ACCESS_TOKEN=...
 TWITCH_REFRESH_TOKEN=...
 OPENAI_API_KEY=...
+TM_AI_AGENT_SECRET=...        # n8n webhook 的認證 secret，缺少時 Bot 仍會啟動，只是 AI 問答失效
 ```
 
 Token 由 `utils/token_manager.py` 集中管理：無論啟動時手動刷新或 twitchAPI 執行期自動刷新，都會同步更新記憶體並寫回 `.env`。
@@ -340,9 +350,9 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 uv run pytest
 ```
 
-目前 170 項測試，約 0.65 秒跑完。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
+目前 212 項測試，約 1 秒跑完。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）。
+覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、回覆清洗、同頻道排隊、七種失敗模式）。
 
 尚未覆蓋的部分與補齊順序列在 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 的 P2-19。
 
@@ -376,4 +386,5 @@ uv run pytest
 - **twitchio 版本相依**：`main.py` 的 token 同步機制寫入了 twitchio 的私有屬性（`_http.token`、`_connection._token`）。套件已釘選 `twitchio>=2.10,<3`，升級時務必一併驗證。
 - **待實測**：忠誠點數兌換偶爾收不到其他使用者事件的問題，已修正 EventSub 物件被 GC 回收的疑似成因（CODE_REVIEW P0-3），但**尚未於正式頻道驗證**，上線後請實際請他人兌換一次確認。
 - **營運方式是刻意的**：Bot 採「開台時手動啟動」，不容器化、不設開機自啟——用「進程不存在」保證關台期間沒有人能刷經驗值與金幣。因此 `!吃`、`!梗`、招呼名單「每場開台重來一次」是預期行為，不是快取失效缺陷。完整的取捨分析（含 Twitch `stream.online` / `stream.offline` 事件的可行性與限制）見 [`docs/CODE_REVIEW.md` 附錄 A](docs/CODE_REVIEW.md#附錄-a營運架構手動啟動-vs-常駐服務)。
+- **AI 問答的兩條路徑**：`!GPT` / `!問` 走哪一條由 Google Sheets 指令集的「內容」欄決定（`tm_ai_agent.ask` 走 n8n AI Agent、`gpt_chat_session.ask` 走 OpenAI 微服務）。切換不需要改程式、也不需要重啟以外的動作。n8n 路徑的回覆最壞要等 120 秒（模型呼叫工具時），同一頻道會排隊送出以避免對話記憶交錯，隊伍上限 2 則。
 - **待處理缺陷**：完整清單與優先序見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md)。

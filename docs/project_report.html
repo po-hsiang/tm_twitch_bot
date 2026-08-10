@@ -534,10 +534,10 @@
       <ul class="meta-list">
         <li><span class="k">服務頻道</span><span class="v hl">twitch.tv/tigermeowtw</span></li>
         <li><span class="k">Python 模組</span><span class="v">28 個（src/）</span></li>
-        <li><span class="k">本地微服務依賴</span><span class="v">4 個（:9091 至 :9094）</span></li>
+        <li><span class="k">外部服務依賴</span><span class="v">本機 4 個（:9091~:9094）+ n8n AI Agent</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">170 項（全部離線）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">212 項（全部離線）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -690,11 +690,12 @@
 
       <div class="arch-layer">
         <div class="arch-layer-label">LAYER 4 · 本地微服務（獨立專案，需先啟動）</div>
-        <div class="arch-row cols-4">
+        <div class="arch-row cols-5">
           <button class="arch-node ext" type="button" data-node="gs"><span class="n-title">Google Sheets</span><span class="n-sub">:9091 指令 / 文案</span></button>
           <button class="arch-node ext" type="button" data-node="oa"><span class="n-title">OpenAI</span><span class="n-sub">:9092 GPT / 對戰</span></button>
           <button class="arch-node ext" type="button" data-node="mg"><span class="n-title">MongoDB Atlas</span><span class="n-sub">:9093 資料存取</span></button>
           <button class="arch-node ext" type="button" data-node="yt"><span class="n-title">YouTube</span><span class="n-sub">:9094 歌單</span></button>
+          <button class="arch-node ext" type="button" data-node="ai"><span class="n-title">n8n TM AI Agent</span><span class="n-sub">webhook AI 問答</span></button>
         </div>
       </div>
 
@@ -1130,6 +1131,17 @@
       title: "YouTube 微服務", file: "localhost:9094",
       desc: "代理 YouTube 播放清單查詢，供 !YT 隨機推薦與 !找歌 關鍵字搜尋。",
       points: ["啟動時抓取一次歌單並快取", "快取目前不會自動失效（見優化建議）"]
+    },
+    ai: {
+      title: "n8n TM AI Agent", file: "svc_client/n8n_ai_agent.py",
+      desc: "自架 n8n 上的 AI Agent 工作流，多客戶端共用（Discord bot 也在用）。人設「虎喵小粉絲」、對話記憶與工具呼叫全在 n8n 端，Bot 這側只送欄位、排隊、清洗回覆。",
+      points: [
+        "channel_id 加 twitch: 前綴，與 Discord 的對話記憶隔離",
+        "同頻道排隊送出，避免共享記憶交錯讓 AI 稱呼錯人",
+        "逾時 120 秒且刻意不重試——每次呼叫都會真的跑一輪 AI",
+        "回覆會洗掉 Discord markdown 與換行；quickchart 網址原樣保留",
+        "任何失敗都只回一句道歉語，細節只進 log"
+      ]
     }
   };
   var archNodes = document.querySelectorAll(".arch-node");
