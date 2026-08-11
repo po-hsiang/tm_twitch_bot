@@ -6,7 +6,7 @@
 
   1. 把 Twitch 的欄位湊齊送出（見 svc_client/n8n_ai_agent.py）
   2. 同一頻道排隊送，避免共享記憶交錯
-  3. 把為 Discord 設計的回覆洗成 Twitch IRC 貼得出去的樣子
+  3. 上聊天室前的最後兩道協定防線（見下方 clean_reply）
 
 原本的 OpenAI 微服務路徑（ai_actions/gpt_chat_session.py）刻意保留不動，
 兩條路可以並存，要切換只需要改 Google Sheets 指令集的「內容」欄。
@@ -19,12 +19,12 @@ from tm_twitch_bot.svc_client.n8n_ai_agent import (
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
 import asyncio
-import re
 
 DEFAULT_CHANNEL = config["twitch"]["channel"]
 
-# Twitch 單則上限 500 字元，扣掉 message_controller 會加的「@顯示名稱 」前綴。
-# n8n 端的回覆本來就控制在約 250 個中文字，這是保險而不是常態。
+# Twitch 單則上限 500 字元。n8n 端保證回覆 ≤500，但那個保證管不到
+# message_controller 會加上的「@顯示名稱 」前綴——剛好 500 字元的合法回覆
+# 加上前綴就超標，而超標的訊息 Twitch 是整則丟掉、不是截斷。
 MAX_REPLY_LENGTH = 450
 TRUNCATE_SUFFIX = "…"
 LINE_SEPARATOR = " / "
@@ -38,59 +38,32 @@ FAILURE_REPLY = "嗚嗚我剛剛恍神了一下，等等再問我一次好不好
 BUSY_REPLY = "我還在想上一個問題，等我一下喔 tigerm24Love"
 
 
-# ===== 回覆清洗 =====
+# ===== 回覆整形 =====
 #
-# Twitch IRC 不渲染 markdown、不支援換行、單則上限 500 字元，
-# 而 n8n 那條工作流的回覆是為 Discord 設計的。
-
-_CODE_FENCE = re.compile(r"```[a-zA-Z0-9_+-]*\n?")
-_MD_LINK = re.compile(r"\[([^\]\n]+)\]\((https?://[^\s)]+)\)")
-# 星號與波浪號：兩側都要緊貼非空白才算語法，所以「12 * 34」不會被誤吃
-_STAR_EMPHASIS = re.compile(r"(\*{1,3}|~~)(?=\S)(.+?)(?<=\S)\1", re.S)
-# 底線要多一層字元邊界限制，否則 snake_case_name 會被當成斜體而黏成一團
-_UNDERSCORE_EMPHASIS = re.compile(r"(?<!\w)(_{1,3})(?=\S)(.+?)(?<=\S)\1(?!\w)", re.S)
-# 引言的 >、標題的 #、以及會被 Twitch 原樣顯示的項目符號
-_LINE_PREFIX = re.compile(r"^[ \t]*(?:>+|#{1,6}|[*•](?=[ \t]))[ \t]*", re.M)
-_URL = re.compile(r"https?://\S+")
-_SPACES = re.compile(r"[ \t　]+")
-
-_URL_SLOT = "\x00{}\x00"
+# n8n 端會偵測 channel_id 的 twitch: 前綴，回覆保證是純文字單行、500 字元以內，
+# 所以原本剝 Discord Markdown 的那一整套（五條 regex ＋ 網址暫存）已經拿掉了。
+# 那套東西不只是多餘，還會傷到正確的回覆：`12 * 34` 會被當成斜體、
+# quickchart 網址裡的 `_` 也是，得靠額外的邊界判斷去補，留著反而是風險。
+#
+# 只留下兩道防線，因為它們是 Twitch 協定層的限制，而 n8n 的保證管不到：
+#
+#   1. 換行——IRC 以換行作為一則訊息的結尾，字串裡混進 \n 不只是排版難看，
+#      而是會讓後半段被當成另一行協定內容送出去。
+#   2. 長度——上限算的是「含前綴的整則」，而前綴是 message_controller 加的，
+#      n8n 不知道有這回事（理由見 MAX_REPLY_LENGTH）。
 
 
 def clean_reply(reply: str) -> str:
-    """把 Discord 風格的回覆洗成 Twitch 貼得出去的單行純文字。
+    """把回覆整形成 Twitch 貼得出去的單行文字。
 
-    Emoji 刻意保留 —— 那是人設的一部分。
-    網址也一定要留住原樣：AI 畫統計圖時會回 quickchart 的圖片網址，
-    而那種網址又長又常含 `_`，直接洗 markdown 會把它吃掉，
-    所以先把網址抽走、洗完再放回去。
+    Emoji 與網址都刻意原樣保留：前者是人設的一部分，
+    後者是 AI 畫統計圖時回的 quickchart 圖片連結。
+
+    用 splitlines() 而不是 split("\\n")：IRC 真正在意的是 \\r 與 \\n，
+    而 split("\\n") 會漏掉單獨出現的 \\r，splitlines() 兩個都收。
     """
-    text = _CODE_FENCE.sub("", reply)
-    text = text.replace("`", "")
-    text = _MD_LINK.sub(r"\1 \2", text)  # [文字](網址) → 文字 網址
-
-    urls: list[str] = []
-
-    def _stash(match: re.Match) -> str:
-        urls.append(match.group(0))
-        return _URL_SLOT.format(len(urls) - 1)
-
-    text = _URL.sub(_stash, text)
-
-    text = _LINE_PREFIX.sub("", text)
-    for _ in range(3):  # 巢狀的 **_粗斜體_** 要一層一層剝
-        text, star_hits = _STAR_EMPHASIS.subn(r"\2", text)
-        text, underscore_hits = _UNDERSCORE_EMPHASIS.subn(r"\2", text)
-        if not star_hits and not underscore_hits:
-            break
-
-    # 換行改成 /，連續空行只算一個分隔；其餘連續空白壓成一個空格
-    lines = [line.strip() for line in text.splitlines()]
-    text = LINE_SEPARATOR.join(line for line in lines if line)
-    text = _SPACES.sub(" ", text).strip()
-
-    for index, url in enumerate(urls):
-        text = text.replace(_URL_SLOT.format(index), url)
+    lines = [line.strip() for line in reply.splitlines()]
+    text = LINE_SEPARATOR.join(line for line in lines if line).strip()
 
     if len(text) > MAX_REPLY_LENGTH:
         text = text[: MAX_REPLY_LENGTH - len(TRUNCATE_SUFFIX)] + TRUNCATE_SUFFIX

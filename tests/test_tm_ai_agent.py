@@ -1,7 +1,8 @@
 """n8n「TM AI Agent」webhook 串接。
 
-n8n 端不屬於本專案、也不會為了 Twitch 修改，所以 Bot 這側必須自己扛三件事：
-把欄位送齊、把 Discord 風格的回覆洗乾淨、任何失敗都只給觀眾一句道歉語。
+n8n 端不屬於本專案，Bot 這側負責三件事：把欄位送齊、同頻道排隊、
+任何失敗都只給觀眾一句道歉語。n8n 現在會偵測 twitch: 前綴並回純文字單行，
+所以回覆處理只留下換行與長度兩道 Twitch 協定層的防線。
 這裡全部離線驗證，不會真的打到 webhook。
 """
 
@@ -208,34 +209,51 @@ async def test_missing_secret_does_not_call_the_webhook(webhook, monkeypatch):
     assert calls == []
 
 
-# ===== 回覆清洗 =====
+# ===== 回覆整形 =====
+#
+# n8n 端會偵測 twitch: 前綴，回覆保證是純文字單行、500 字元以內，
+# 所以這裡只驗兩件事：該原樣通過的原樣通過，
+# 以及兩道協定防線（換行、長度）在保證失效時仍然守得住。
 
 
 @pytest.mark.parametrize(
-    "raw,expected",
+    "raw",
     [
-        ("**粗體**", "粗體"),
-        ("*斜體*", "斜體"),
-        ("***又粗又斜***", "又粗又斜"),
-        ("__底線__", "底線"),
-        ("~~刪除線~~", "刪除線"),
-        ("`程式碼`", "程式碼"),
-        ("**_巢狀_**", "巢狀"),
-        ("# 標題", "標題"),
-        ("> 引言", "引言"),
-        ("```python\nprint(1)\n```", "print(1)"),
+        "安安好虎粉 🐯 tigerm24Love",
+        "答案是 12 * 34 = 408",
+        "欄位叫 snake_case_name 喔",
+        "圖表在這 https://quickchart.io/chart/render/zf-b0d974e6-a05b",
+        "https://quickchart.io/chart?c={type:'bar',data:{labels:['a_b','c_d']}}&bkg=white",
     ],
+    ids=["emoji-emote", "calculator", "identifier", "chart-url", "url-underscores"],
 )
-def test_discord_markdown_is_removed(raw, expected):
-    assert agent.clean_reply(raw) == expected
+def test_plain_text_passes_through_untouched(raw):
+    """n8n 給的已經是純文字，這裡不該再自作聰明去動它。
+
+    列出來的每一項都是舊版剝 Markdown 時真的會弄壞的字串
+    （`*` 與 `_` 被當成語法），拿掉那套之後正好變成迴歸保護。
+    """
+    assert agent.clean_reply(raw) == raw
 
 
 def test_newlines_become_a_visible_separator():
-    """Twitch IRC 不支援換行，直接接起來會黏成一團。"""
+    """IRC 以換行作為一則訊息的結尾，混進 \\n 會讓後半段變成另一行協定內容。
+
+    n8n 保證不會有換行，但這是協定層的安全問題而不是排版問題，
+    保證失效的代價太大，所以這道防線刻意留著。
+    """
     cleaned = agent.clean_reply("1. 熱搜A\n2. 熱搜B\n3. 熱搜C")
 
     assert "\n" not in cleaned
     assert cleaned == "1. 熱搜A / 2. 熱搜B / 3. 熱搜C"
+
+
+@pytest.mark.parametrize("break_char", ["\n", "\r\n", "\r"], ids=["lf", "crlf", "cr"])
+def test_a_lone_carriage_return_is_flattened_too(break_char):
+    """split("\\n") 會漏掉單獨的 \\r，而 IRC 對 \\r 一樣敏感。"""
+    cleaned = agent.clean_reply(f"前段{break_char}後段")
+
+    assert cleaned == "前段 / 後段"
 
 
 def test_blank_lines_do_not_produce_empty_segments():
@@ -244,33 +262,7 @@ def test_blank_lines_do_not_produce_empty_segments():
     assert cleaned == "第一段 / 第二段"
 
 
-def test_emoji_are_kept():
-    assert "🐯" in agent.clean_reply("安安 🐯 好虎粉")
-
-
-def test_twitch_emote_names_survive():
-    assert "tigerm24Love" in agent.clean_reply("**安安** tigerm24Love")
-
-
-def test_quickchart_urls_survive_untouched():
-    """AI 畫統計圖會回 quickchart 網址，裡面的 _ 不能被當成斜體語法吃掉。"""
-    url = "https://quickchart.io/chart?c={type:'bar',data:{labels:['a_b','c_d']}}&bkg=white"
-
-    cleaned = agent.clean_reply(f"圖表在這 **請看**：{url}")
-
-    assert url in cleaned
-
-
-def test_markdown_links_keep_both_text_and_url():
-    cleaned = agent.clean_reply("[虎喵頻道](https://twitch.tv/tigermeowtw)")
-
-    assert "虎喵頻道" in cleaned
-    assert "https://twitch.tv/tigermeowtw" in cleaned
-    assert "[" not in cleaned and "](" not in cleaned
-
-
 def test_over_length_reply_is_truncated_with_room_for_the_name_prefix():
-    """message_controller 還會加上「@顯示名稱 」前綴，不能剛好貼滿 500。"""
     cleaned = agent.clean_reply("字" * 900)
 
     assert len(cleaned) == agent.MAX_REPLY_LENGTH
@@ -278,21 +270,17 @@ def test_over_length_reply_is_truncated_with_room_for_the_name_prefix():
     assert agent.MAX_REPLY_LENGTH < 500
 
 
-def test_multiplication_in_calculator_output_is_not_eaten():
-    """計算機工具的回覆含 * 號，加了空格就不該被當成斜體。"""
-    assert agent.clean_reply("答案是 12 * 34 = 408") == "答案是 12 * 34 = 408"
+def test_a_reply_at_n8n_max_still_fits_after_the_longest_prefix():
+    """n8n 的上限剛好等於 Twitch 的上限，中間卻夾了一個前綴——這就是缺口。
 
+    前綴是 message_controller 加的「@顯示名稱 」，n8n 不知道有這回事。
+    Twitch 對超長訊息是整則丟掉而不是截斷，所以「剛好 500」等於整則消失。
+    顯示名稱上限 25 字元，加上 @ 與空格共 27。
+    """
+    cleaned = agent.clean_reply("字" * 500)
+    longest_prefix = "@" + "x" * 25 + " "
 
-def test_identifiers_with_underscores_are_not_eaten():
-    """單一 _ 是 Discord 的斜體語法，但 snake_case 不該被當成斜體黏成一團。"""
-    assert agent.clean_reply("欄位叫 snake_case_name 喔") == "欄位叫 snake_case_name 喔"
-
-
-def test_bullet_markers_are_stripped():
-    """Twitch 會把 * 原樣顯示，看起來像壞掉的 markdown。"""
-    cleaned = agent.clean_reply("* 熱搜A\n* 熱搜B")
-
-    assert cleaned == "熱搜A / 熱搜B"
+    assert len(longest_prefix + cleaned) <= 500
 
 
 # ===== 同頻道排隊 =====
@@ -392,7 +380,7 @@ async def test_queue_slot_is_released_after_a_failure(webhook, monkeypatch):
 
 async def test_successful_reply_is_returned_cleaned(webhook):
     respond, _ = webhook
-    respond(FakeResponse(json_data={"reply": "**安安**好虎粉\n今天過得好嗎 🐯"}))
+    respond(FakeResponse(json_data={"reply": "安安好虎粉\n今天過得好嗎 🐯"}))
 
     result = await agent.ask(raw_tail_text="你好", message=FakeMessage())
 
