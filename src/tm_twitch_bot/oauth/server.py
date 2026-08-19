@@ -30,7 +30,12 @@ app = FastAPI()
 @app.get("/callback")
 async def oauth_callback(req: Request):
     code = req.query_params.get("code")
-    state = req.query_params.get("state")
+    # 這裡刻意「不」取 state：現行的授權網址（見上方第二個註解區塊）已經沒有
+    # 帶 &state=，所以 Twitch 也不會回傳，取了只會拿到 None。
+    # 也就是說這條 callback 目前沒有 CSRF 防護。之所以還可以接受：
+    # 它是頻道主自己在本機手動跑一次的一次性工具，不是常駐服務。
+    # 要補的話得三件一起做——產生隨機 state、放進手動貼的授權網址、
+    # 回來時比對——屬於 CODE_REVIEW P3-34 的範圍，不在這次的 lint 清理裡。
     if not code:
         raise HTTPException(400, "Missing Code")
 

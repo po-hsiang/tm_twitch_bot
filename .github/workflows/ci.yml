@@ -40,6 +40,11 @@ jobs:
         # 測試只會載入被用到的模組，沒被 import 到的檔案語法壞掉不會被發現
         run: uv run python -m compileall -q src tests
 
+      - name: Lint（ruff）
+        # compileall 只保證「語法能編譯」，抓不到未使用的 import、拼錯的名字、
+        # 可變預設參數這類「編得過但會出事」的問題。規則選擇見 pyproject.toml。
+        run: uv run ruff check src tests
+
       - name: 執行測試
         # 測試全部離線：conftest.py 會在 import 專案模組前塞入假環境變數，
         # 因此 CI 上沒有 .env 也能跑，不需要任何 secrets

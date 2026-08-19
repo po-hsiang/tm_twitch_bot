@@ -15,6 +15,9 @@ dependencies = [
     "pyyaml",
     "httpx",
     "python-dotenv",
+    "attrs", # utils/dump_obj_utils.py 真的 import attr。過去只靠 twitchAPI 的
+             # 傳遞依賴才裝得到，twitchAPI 哪天不用 attrs 就會壞。
+             # （那個模組目前零呼叫端，見 CODE_REVIEW P2-28，要不要留由頻道主決定）
 ]
 
 [build-system]
@@ -30,8 +33,30 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-q --strict-markers"
 
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# tttest.py 是暫存的手動試算稿（見 CODE_REVIEW P2-28），不套 lint。
+# 不刪掉是因為那是頻道主的東西，去留由他決定。
+extend-exclude = ["src/tm_twitch_bot/tttest.py"]
+
+[tool.ruff.lint]
+# 刻意只開「會抓到真問題」的規則，不開會大規模改寫程式碼的那些：
+#   F  pyflakes —— 未使用的 import／變數、拼錯的名字，價值最高
+#   E/W pycodestyle —— 基本排版錯誤
+#   B  bugbear —— 可變預設參數、except 抓太寬這類真的會出事的寫法
+# 刻意不開：
+#   I  (isort) 會把每個檔案的 import 重排。本專案的 import 是刻意手排的，
+#      重排會製造一份巨大且沒有價值的 diff，還讓 git blame 失效
+#   UP (pyupgrade)、SIM 同理，屬於「改寫既有正確程式碼」而非抓錯
+select = ["F", "E", "W", "B"]
+# E501（行太長）不開：專案裡有大量中文 f-string 訊息，
+# 為了湊行寬去拆字串反而更難讀，長度問題交給 line-length 當軟性參考
+ignore = ["E501"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "ruff>=0.14",
 ]

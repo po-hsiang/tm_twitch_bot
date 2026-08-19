@@ -96,7 +96,9 @@ class GoldRushGame(metaclass=_SingletonMeta):
         if not self._entries:
             await send_func("⚠️ 沒有人參加一桶金遊戲")
             return
-        items, weights = zip(*self._entries.items())
+        # strict=True：這裡每個元素都是 (user_id, 金額) 的二元組，長度本來就一致，
+        # 寫明了才不會在未來換掉資料結構時默默丟掉尾巴
+        items, weights = zip(*self._entries.items(), strict=True)
         user_id = weighted_random_choice(list(items), list(weights))
         char = await Character.find_by_user_id(user_id)
         if not char:

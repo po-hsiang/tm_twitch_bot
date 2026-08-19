@@ -1,9 +1,3 @@
-from pathlib import Path
-import sys
-
-parent_path = Path(__file__).resolve().parent.parent
-sys.path.append(str(parent_path))
-
 from twitchAPI.eventsub.websocket import EventSubWebsocket
 from twitchAPI.type import AuthScope
 from twitchAPI.twitch import Twitch
@@ -25,6 +19,7 @@ import inspect
 import asyncio
 import signal
 import httpx
+import sys
 
 
 if platform.system() == "Windows":
@@ -230,12 +225,12 @@ class MyBot(commands.Bot):
         await vip_system.sweep_expired()
 
         if not config["is_test"]:
-            await self.send_to_channel(f"Bot 已上線 tigerm24ThruFast ")
+            await self.send_to_channel("Bot 已上線 tigerm24ThruFast ")
             await self.send_to_channel(
-                f"指令集： https://docs.google.com/spreadsheets/d/1-UQ7KBWK09ZCHZKFycymk04BaB5oW6DJ0vi2N7x6qQE/edit?usp=sharing "
+                "指令集： https://docs.google.com/spreadsheets/d/1-UQ7KBWK09ZCHZKFycymk04BaB5oW6DJ0vi2N7x6qQE/edit?usp=sharing "
             )
         else:
-            logger.info(f"【測試測試】Bot 已上線！")
+            logger.info("【測試測試】Bot 已上線！")
 
         # === 這裡呼叫任務排程器 ===
         self.scheduler = schedule_task(self.send_to_channel)
@@ -472,9 +467,9 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.error(f"主程式偵測到 KeyboardInterrupt")
+        logger.error("主程式偵測到 KeyboardInterrupt")
     except Exception as e:
         logger.error(f"主程式錯誤: {e}")
     finally:
-        logger.warning(f"主程式 finally 結束")
+        logger.warning("主程式 finally 結束")
         sys.exit()

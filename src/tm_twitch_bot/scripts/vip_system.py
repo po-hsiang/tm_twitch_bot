@@ -76,8 +76,8 @@ class VipSystem(metaclass=_SingletonMeta):
             return "⚠️ VIP 兌換功能未啟用。"
 
         user_id = getattr(char, "user_id", None)
-        display_name = getattr(char, "display_names")[-1]
-        username = getattr(char, "usernames")[-1]
+        display_name = char.display_names[-1]
+        username = char.usernames[-1]
 
         async with self._redeem_lock:
             today_iso = self._today_iso()
