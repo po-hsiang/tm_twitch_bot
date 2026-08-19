@@ -53,8 +53,23 @@ class TokenManager:
         # 同步 config dict，讓仍讀 config 的舊程式拿到新值
         config["twitch"]["access_token"] = access_token
         config["twitch"]["refresh_token"] = refresh_token
-        set_key(str(ENV_PATH), "TWITCH_ACCESS_TOKEN", access_token)
+
+        # 寫檔順序是刻意的：refresh_token 先寫，access_token 後寫。
+        #
+        # dotenv 的 set_key 本身是原子的（寫暫存檔再 os.replace），
+        # 但這裡有兩次呼叫，也就是兩個各自原子、彼此無關的操作。
+        # 兩次之間崩潰（斷電、被強制關掉）就會留下不一致的一對，
+        # 而 Twitch 的 refresh token 用過就輪替，所以哪一半留舊的差很多：
+        #
+        #   先寫 refresh（現在）：留下「新 refresh ＋ 舊 access」。
+        #     下次啟動 validate() 發現 access 失效 → 用新的 refresh 換 → 自動復原。
+        #   先寫 access（原本）：留下「新 access ＋ 舊 refresh」。
+        #     下次啟動 validate() 通過，看起來一切正常，等到 access 過期要刷新時
+        #     才發現 refresh 已經被輪替失效 —— 那時只能重跑一整輪 OAuth 授權。
+        #
+        # 換句話說，順序決定了「崩在中間」是自動復原還是要人工重新授權。
         set_key(str(ENV_PATH), "TWITCH_REFRESH_TOKEN", refresh_token)
+        set_key(str(ENV_PATH), "TWITCH_ACCESS_TOKEN", access_token)
         logger.info("✅ 已更新 access / refresh token 並寫回 .env")
         self._notify(access_token, refresh_token)
 

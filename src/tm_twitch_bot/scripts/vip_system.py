@@ -45,11 +45,26 @@ class VipSystem(metaclass=_SingletonMeta):
         self.vips_col_name = "tm_twitch_vips"
         self.cfg = _load_vip_config()
         self._redeem_lock = asyncio.Lock()  # 全程式跑在單一事件圈上，改用 asyncio.Lock
+        # 這三個要到 event_ready 才由 set_api_context() 填。
+        # 明確初始化成 None，未就緒時才會是「值為 None」而不是
+        # 「屬性不存在」——後者只能靠 AttributeError 兜底，
+        # 而那要等到扣款之後才會爆（見 is_ready 與 redeem_vip）。
+        self._client_id: Optional[str] = None
+        self._broadcaster_id: Optional[str] = None
+        self._token_getter = None
 
     def set_api_context(self, client_id: str, broadcaster_id: str, token_getter):
         self._client_id = client_id
         self._broadcaster_id = broadcaster_id
         self._token_getter = token_getter
+
+    @property
+    def is_ready(self) -> bool:
+        """Twitch API 的呼叫條件是否已就緒。
+
+        在 event_ready 之前抵達的 `!vip` 會走到這裡。
+        """
+        return all((self._client_id, self._broadcaster_id, self._token_getter))
 
     @staticmethod
     def _today_iso() -> str:
@@ -74,6 +89,13 @@ class VipSystem(metaclass=_SingletonMeta):
 
         if not self.cfg.enabled:
             return "⚠️ VIP 兌換功能未啟用。"
+
+        # 在扣款之前就擋掉。原本這件事是靠取 token 時的 AttributeError 兜底，
+        # 但那個位置已經在 spend_gold() 之後——雖然有退款，卻多繞了
+        # 「扣款→打 API 失敗→退款」一圈，還會在 log 留下誤導的 API 失敗紀錄。
+        if not self.is_ready:
+            logger.error("!vip 在 set_api_context() 之前就被呼叫，Twitch API 尚未就緒")
+            return "⚠️ VIP 兌換服務還在暖機，請稍等一下再試 tigerm24Love"
 
         user_id = getattr(char, "user_id", None)
         display_name = char.display_names[-1]
@@ -108,9 +130,9 @@ class VipSystem(metaclass=_SingletonMeta):
             ).isoformat()
 
             # 透過 API 設定 VIP。
-            # 取 token 也要包在 try 內：set_api_context() 尚未被呼叫時
-            # self._token_getter 根本不存在，若讓它在 try 外拋 AttributeError，
-            # 就會變成「錢扣了、VIP 沒給、也沒退款」。
+            # 取 token 仍然包在 try 內：函式開頭的 is_ready 已經擋掉「還沒就緒」，
+            # 但 token_getter 本身也可能拋例外（token 已失效、刷新失敗）。
+            # 一旦讓它在 try 外拋出，就會變成「錢扣了、VIP 沒給、也沒退款」。
             try:
                 token = self._token_getter()
                 is_success, api_result = await twitch_vips_api.add_channel_vip(
