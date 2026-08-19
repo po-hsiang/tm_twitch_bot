@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+# 覆蓋率量測的產出，每次跑都會變，不進版控
+.coverage
+.coverage.*
+htmlcov/
 
 # ===== 執行期產物 =====
 logs/
