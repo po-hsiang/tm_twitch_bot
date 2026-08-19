@@ -537,7 +537,7 @@
         <li><span class="k">外部服務依賴</span><span class="v">本機 4 個（:9091~:9094）+ n8n AI Agent</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">204 項（全部離線）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">254 項（全部離線，覆蓋率 66%）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -949,6 +949,45 @@
         四個微服務現在都符合「掛掉不影響主體」的原則了。
       </p>
     </div>
+
+    <div class="reveal ops-block">
+      <h3 class="ops-h">六、防線放在哪一層：一個被漏掉的指令證明了原本的位置是錯的</h3>
+      <p class="ops-p">
+        第七輪查到一個長期存在但沒人發現的缺陷：<strong class="hl">終極密碼的開場訊息，觀眾其實看不到內容。</strong>
+        <code>guess_number_game.start()</code> 用三引號多行字串組訊息，而 twitchio 的
+        <code>Messageable.send</code> 是把內容原樣內插進 <code>PRIVMSG #頻道 :{content}
+</code>，
+        它的 <code>check_content</code> <strong>只驗長度 500、完全不管換行</strong>。
+        實測那則訊息在線路上會被切成三行：
+      </p>
+      <div class="cmd-table-wrap">
+        <table>
+          <thead><tr><th>IRC 線路上的第幾行</th><th>內容</th><th>結果</th></tr></thead>
+          <tbody>
+            <tr><td>[0]</td><td><code>PRIVMSG #tigermeowtw :@老虎喵喵喵</code></td><td>觀眾只看到一個空的 @ 提及</td></tr>
+            <tr><td>[1]</td><td>🎮 終極密碼開始！隨機產生數字於：0 ~ 1000，</td><td>變成無效 IRC 指令，靜默消失</td></tr>
+            <tr><td>[2]</td><td>輸入『 !猜 &lt;數字&gt; 』每次猜測費 5，沒猜中灌注 2 進彩金池</td><td>同上</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="ops-p" style="margin-top:20px">
+        遊戲照常開始，但沒人知道規則與範圍。真正的問題不在這一支遊戲，而在
+        <strong class="hl">防線放錯了層</strong>：換行整平原本只做在 AI 回覆那條路
+        （<code>ai_actions/tm_ai_agent.py</code>），可是「不能有換行」是每一則出站訊息都適用的
+        Twitch 協定限制，和早就放在 <code>chat_sender</code> 的長度截斷完全同類。
+      </p>
+      <p class="ops-p">
+        <strong class="hl">已修正</strong>：查過全專案的出站呼叫點，繞過 <code>chat_sender</code>
+        直接碰 <code>channel.send</code> 的地方是 <strong>0 處</strong>，所以把換行整平搬到那一層，
+        一次蓋住所有指令——包括 <code>ai_actions/duel.py</code> 回傳的 <code>battle_log</code>，
+        那是模型生成的自由文字直接進聊天室，而它的 system prompt 只禁了 Markdown、沒禁換行。
+        搬下去之後 AI 那側的處理整個刪掉，淨少 50 行程式碼。
+      </p>
+      <p class="ops-note">
+        教訓不是「這支遊戲寫錯了」，而是「同一類限制散在各處做，漏掉的那次沒有任何東西會攔住」。
+        現在 <code>chat_sender</code> 是唯一的出站瓶頸，換行、長度、速率三道保護都在那裡。
+      </p>
+    </div>
   </section>
 
   <!-- ============ 指令 ============ -->
@@ -996,7 +1035,7 @@
       <p>
         依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
         <br>
-        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-09，第六輪後）：共 21 項，12 項已修正、2 項部分處理。</span>
+        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-19，第七輪後）：共 21 項，12 項已修正、3 項部分處理。此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；第七輪另有 5 項新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42）僅記錄在該文件。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
       </p>
     </div>
@@ -1140,7 +1179,7 @@
         "n8n 認得這個前綴，回覆保證是純文字單行、500 字元以內",
         "同頻道排隊送出，避免共享記憶交錯讓 AI 稱呼錯人",
         "逾時 120 秒且刻意不重試——每次呼叫都會真的跑一輪 AI",
-        "仍自行防換行與長度：前者是 IRC 協定問題，後者因為 n8n 不知道還有「@顯示名稱 」前綴",
+        "回覆完全不做後處理——換行與長度那兩道 Twitch 協定防線改由 chat_sender 統一負責",
         "任何失敗都只回一句道歉語，細節只進 log"
       ]
     }
@@ -1326,8 +1365,8 @@
      desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。（已補上 graceful shutdown：SIGINT / SIGTERM 會依序取消排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，finally 裡的 sys.exit 也已移除。）",
      fix:"剩下的部分：外層加 supervisor 迴圈搭配指數退避重連。依「開台時手動啟動」的營運決策，這一項已從必要降為加分項——當次開台故障是可接受的。",
      files:["main.py:179","scripts/vip_system.py"]},
-    {cat:"quality", sev:"mid", title:"_SingletonMeta 重複貼了六份",
-     desc:"六個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改六個地方。",
+    {cat:"quality", sev:"mid", title:"_SingletonMeta 重複貼了八份",
+     desc:"八個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改八個地方。",
      fix:"抽出到 utils/singleton.py 供全專案共用。",
      files:["svc_client/*","games/*","ai_actions/gpt_chat_session.py"]},
     {cat:"quality", sev:"mid", title:"twitchio 2.x 已停止維護",
@@ -1342,9 +1381,9 @@
      desc:"指令表只在啟動時載入一次，營運修改 Sheets 後必須重啟 Bot 才生效，與「試算表當 CMS」的設計初衷相違。",
      fix:"新增管理員限定的 !reload 指令重新拉取指令集，或由排程器每 N 分鐘自動重載。",
      files:["scripts/command_dispatcher.py"]},
-    {cat:"quality", sev:"low", title:"清理死碼與佔位資訊",
+    {cat:"quality", sev:"low", st:"partial", title:"清理死碼與佔位資訊",
      desc:"error_utils / vault_utils / asset_file_utils 幾乎整檔註解（含另一專案 vivy 的遺留）、tttest.py 為草稿檔、pyproject 的 authors 仍是範本值。（main.py finally 裡的 sys.exit 已隨 graceful shutdown 一併移除。）",
-     fix:"刪除或移入 git 歷史保存；補上正確的專案 metadata；統一結束流程。",
+     fix:"已處理的部分：導入 ruff 後清掉 dump_obj_utils 三個未使用的 import，並把它真的用到的 attrs 補進 dependencies（過去只靠 twitchAPI 的傳遞依賴）；main.py 那段已無必要的 sys.path hack 也一併移除。剩下的部分：註解掉的舊碼要不要留由頻道主決定（不會擅自刪除），tttest.py 已排除於 lint 之外。",
      files:["utils/error_utils.py","utils/vault_utils.py","tttest.py","pyproject.toml"]}
   ];
   var SEV_LABEL = {high:"高", mid:"中", low:"低"};

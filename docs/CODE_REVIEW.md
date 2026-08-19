@@ -4,7 +4,7 @@
 | --- | --- |
 | 健檢日期 | 2026-08-09 |
 | 基準版本 | `584821e`（健檢起點） |
-| 最後更新 | 2026-08-09，第六輪修正後 |
+| 最後更新 | 2026-08-19，第七輪修正後 |
 | 範圍 | `src/tm_twitch_bot/` 全部模組、`pyproject.toml`、版控與部署設定 |
 | 評估準則 | 依使用者指定的優先序：**穩定 > 好維護 > 好擴充** |
 
@@ -85,7 +85,27 @@
 結論見 [附錄 A](#附錄-a營運架構手動啟動-vs-常駐服務)——**維持手動啟動，並已上線只寫 log 的事件觀測**。
 這個決策同時影響 P0-7、P1-12、P1-13、P3-32。
 
-剩餘 15 項待處理，內容如下。
+### 第七輪
+
+| 編號 | 項目 | 狀態 |
+| --- | --- | --- |
+| P1-38 | 終極密碼的開場訊息永遠送不出去 | ✅ `b2101f6` 🧪 本輪新發現 |
+| P1-39 | `isdigit()` 與 `int()` 不等價 | ✅ `f703e14` 🧪 本輪新發現 |
+| P3-31 | 沒有 lint / format 工具鏈 | ✅ `a26e5d6` |
+| P3-33 | `main.py` 的 `sys.path` hack | ✅ `a26e5d6`（P3-31 的連帶收穫） |
+| P2-19 | 終極密碼與抽卡零測試覆蓋 | ✅ `472c265` 🧪 |
+| P2-25 | `_invoke` 的參數過濾是假的 | ✅ `4829f0b` 🧪（換了做法，見該項） |
+| P1-17 | `vip_system` 的 API context 未初始化 | ✅ `9b37b05` 🧪 |
+| P1-18 | `.env` 的 token 寫回不是原子操作 | ✅ `9b37b05` 🧪 **原判斷有誤，已更正** |
+| P2-40 | `display_names[-1]` 對舊文件會 IndexError | 🔲 本輪新發現 |
+| P2-41 | `duel.py` 未驗證模型輸出 | 🔲 本輪新發現 |
+| P2-42 | 終極密碼開了之後無法取消 | 🔲 本輪新發現 |
+| P3-34 | OAuth callback 沒驗 `state` | 🔲 仍待處理，但缺口已在程式碼中明確註明 |
+
+測試總數 **254 項**，全部離線，執行時間 0.4 秒；整體覆蓋率 **66%**。
+覆蓋率細節見 [附錄 B](#附錄-b測試覆蓋率現況)。
+
+剩餘 12 項待處理（另加 P3-32 殘留的服務清單文件），內容如下。
 
 ---
 
@@ -325,23 +345,84 @@ IRC 限制是 30 秒 20 則，超過會被伺服器靜音約 30 分鐘。多人�
 
 > 順帶記錄一個**尚未處理**的相鄰風險：`_format_rank_list` 對 `doc['level']`、`doc['job']`、`doc['gold']` 是硬括號存取。目前所有角色文件都經 `Character.to_dict()` 產生，必定含這些欄位，因此暫不處理；但若日後有其他來源寫入 `tm_twitch_users`，這裡會 KeyError。
 
-### P1-17 🔲 `vip_system` 的 API context 未初始化
+### P1-17 ✅🧪 `vip_system` 的 API context 未初始化
 
 `scripts/vip_system.py`
 
 `_client_id` / `_broadcaster_id` / `_token_getter` 只在 `set_api_context()` 建立。任何在 `event_ready` 之前抵達的 `!vip` 都會 AttributeError。
 
-**已部分緩解**（P2-24 一併處理）：取 token 現在包在 try 內，未初始化時會退款並回覆友善訊息，不會出現「錢扣了什麼都沒發生」。
+**已修正**（`9b37b05`）：
 
-仍待處理：`__init__` 應把三個屬性初始化為 `None`，並在進入兌換流程前就明確檢查，而不是靠例外兜底。
+- `__init__` 明確初始化三個屬性為 `None`——未就緒時是「值為 None」而不是「屬性不存在」
+- 新增 `is_ready` property，並在 **扣款之前** 就擋掉，回一句「還在暖機」
+- 原本靠取 token 時的 AttributeError 兜底，位置已經在 `spend_gold()` 之後：雖然有退款，卻白繞一圈「扣款→打 API 失敗→退款」，還會在 log 留下誤導的「呼叫 Twitch VIP API 失敗」，排查時會往錯的方向找
+- 順帶修正 try 區塊上那段過時註解——現在包 try 的理由不再是「屬性不存在」，而是 `token_getter` 本身可能失效（token 已過期、刷新失敗）
 
-### P1-18 🔲 `.env` 的 token 寫回不是原子操作
+一併移除測試 `test_missing_api_context_refunds_the_gold`：它用 `monkeypatch.delattr` 把屬性整個刪掉來模擬，而修好之後 `__init__` 保證那三個屬性一定存在，那是正式環境不可能出現的狀態。
+
+### P1-18 ✅🧪 `.env` 的 token 寫回：**原判斷有誤，已更正**
 
 `utils/token_manager.py`
 
-`set_key` 是 read-modify-write 整個檔案。若寫入當下崩潰，**`refresh_token` 可能整個遺失，就得重新走完整 OAuth 授權流程**。
+原本寫的是「`set_key` 是 read-modify-write 整個檔案，寫入當下崩潰可能讓 `refresh_token` 整個遺失」。**這個前提是錯的**，實測本專案安裝的版本：
 
-建議：寫暫存檔再 `os.replace()`，或把 token 移到獨立的 `.tokens.json`。
+```
+python-dotenv 1.2.2 → set_key 走 rewrite()：NamedTemporaryFile + os.replace()
+```
+
+也就是**單次 `set_key` 本身就是原子的**，「整份 .env 遺失」不會發生。這一項的嚴重度從 P1 降為 P2。
+
+**收窄後真正的問題**：`update()` 呼叫 `set_key` **兩次**，是兩個各自原子、彼此無關的操作。兩次之間崩潰（斷電、被強制關掉）會留下不一致的一對。而 Twitch 的 refresh token **用過就輪替**，所以哪一半留舊的差很多：
+
+| 寫入順序 | 崩在中間會留下 | 下次啟動 |
+| --- | --- | --- |
+| 先 access（原本） | 新 access ＋ **已失效的**舊 refresh | `validate()` 通過、看起來一切正常；等到 access 過期要刷新才發現 refresh 不能用 → **只能重跑一整輪 OAuth 授權** |
+| 先 refresh（現在） | 新 refresh ＋ 舊 access | `validate()` 發現 access 失效 → 用新的 refresh 換 → **自動復原** |
+
+**已修正**（`9b37b05`）：把兩行對調。順序決定了「崩在中間」是自動復原還是要人工重新授權。
+
+刻意**不**自己重寫 dotenv 的寫檔邏輯（原建議的做法）——那會動到存有 `TWITCH_CLIENT_SECRET` 的 `.env` 格式，寫壞的話 Bot 直接起不來，風險遠高於這個一行的換序，而換序已經把最壞情況從人工重新授權變成自動復原。
+
+---
+
+### P1-38 ✅🧪 終極密碼的開場訊息永遠送不出去（第七輪新發現）
+
+`games/guess_number_game.py`
+
+`start()` 用三引號多行字串組開場訊息，實際上**觀眾看不到內容**。
+
+twitchio 的 `Messageable.send` 是把內容原樣內插進 `PRIVMSG #頻道 :{content}
+`，而它的 `check_content` **只驗長度 500、完全不管換行**。所以那則訊息在線路上會被切成三行（已實測）：
+
+```
+[0] PRIVMSG #tigermeowtw :@老虎喵喵喵      ← 觀眾只看到這個
+[1] 🎮 終極密碼開始！隨機產生數字於：0 ~ 1000，   ← 變成無效 IRC 指令
+[2] 輸入『 !猜 <數字> 』每次猜測費 5，沒猜中灌注 2 進彩金池
+```
+
+遊戲照常開始，但沒人知道規則與範圍。
+
+**已修正**（`b2101f6`），而且修的是層次問題而不是單點：
+
+換行整平原本只做在 `ai_actions/tm_ai_agent.py`（AI 回覆那條路），**位置是錯的**——這是「每一則出站訊息都適用的 Twitch 協定限制」，和已經在 `chat_sender` 的長度截斷完全同類。查過全專案的出站呼叫點，繞過 `chat_sender` 直接碰 `channel.send` 的地方是 **0 處**，所以搬到那一層就能一次蓋住所有指令——包括 `ai_actions/duel.py` 回傳的 `battle_log`，那是模型生成的自由文字直接進聊天室，system prompt 只禁了 Markdown、**沒禁換行**。
+
+搬下去之後 `tm_ai_agent.clean_reply` 整個刪掉（淨刪 50 行）：長度那道由 `chat_sender` 的 500 截斷接手就夠了。`guess_number` 的訊息本身也改成單行——`chat_sender` 是安全網，不是讓來源可以繼續產生壞字串的理由。
+
+`flatten()` 用 `splitlines()` 而不是 `split("
+")`，因為 IRC 對單獨的 `
+` 一樣敏感。整平放在截斷**之前**，否則分隔符佔掉的字數可能讓結果又超過 500。
+
+### P1-39 ✅🧪 `isdigit()` 與 `int()` 不等價（第七輪新發現）
+
+`games/guess_number_game.py` · `games/gold_rush_game.py`
+
+`isdigit()` 對「²」這類上標數字回傳 `True`，但 `int("²")` 會 `ValueError`。所以 `!猜 ²` 和 `!投 ²` 都不會被「請輸入正整數」擋下來，而是一路走到 `int()` 才爆掉，最後被 `message_controller` 的通用錯誤處理接走——**觀眾收到的是「系統忙碌」這種看不懂的回覆**，log 裡也只留下一個 ValueError。
+
+**已修正**（`f703e14`）：改用 `isdecimal()`，它收的字元集才與 `int()` 一致。上標會被擋掉，而全形數字「５」和其他語系的十進位數字仍然收得下（觀眾用中文輸入法很容易打出全形數字，不該擋）。
+
+錢不會掉：兩個遊戲的格式檢查都在扣款之前，測試也一併把這點釘住。
+
+> 同一個檔案裡的 `gold_rush.start()` 解析倒數秒數用的是 `try/except ValueError`，本來就是正確寫法——這是同專案內的不一致。
 
 ---
 
@@ -427,13 +508,22 @@ IRC 限制是 30 秒 20 則，超過會被伺服器靜音約 30 分鐘。多人�
 
 > 跨系統（Twitch API + 兩個 collection）的真正原子性做不到，這裡採取的是「縮短不一致視窗 + 失敗時明確留痕」。
 
-### P2-25 🔲 `_invoke` 的參數過濾是假的
+### P2-25 ✅🧪 `_invoke` 的參數過濾是假的
 
-`scripts/command_dispatcher.py:46-53`
+`scripts/command_dispatcher.py`
 
-註解寫「只挑函式簽章允收的名字」，但那個 dict comprehension **沒有做任何過濾**。要做就用 `inspect.signature` 濾一遍；不做就把註解拿掉，別留誤導。
+註解寫「只挑函式簽章允收的名字」，但那個 dict comprehension **沒有做任何過濾**——所有 context 一律硬塞，而且 `func(*tail, ...)` 還把訊息切出來的 token 全部當位置參數送進去。
 
-更好的方向：給指令函式定義一個明確的 `CommandContext` 型別，取代現在滿場飛的 `*args, **kwargs`。**這對「好擴充」的幫助最大。**
+現有 19 個指令函式清一色是 `*args, **kwargs`，所以看不出問題。但只要有人照著那句註解寫一個明確簽章的函式（例如 `async def foo(*, char)`）就會 `TypeError`，而 `_invoke` 會把例外收斂成 `GENERIC_ERROR_REPLY` → 觀眾只看到「這個指令暫時出了點問題」，真正原因埋在 log 裡。
+
+**已修正**（`4829f0b`）：改成真的看簽章（「按參數名注入」）。
+
+- 函式想要什麼就在參數上寫什麼，沒寫的不會拿到
+- 有 `**kwargs` 的照舊全給 → 現有 19 個函式行為**完全不變**
+- 位置參數同理，只有明確寫 `*args` 的才拿得到 token（查證過目前沒有任何指令函式真的用它，都是從 `raw_tail_text` 取）
+- 簽章解析用 `lru_cache`——每一則觸發指令的訊息都會走到這裡
+
+**刻意沒有照原建議做 `CommandContext` 型別。** 「按參數名注入」同樣讓函式的需求變明確、可標註型別，卻不必多一層物件包裝，也不必改寫 19 個線上指令函式——那些多半只有開台時才會真正被執行到，測試不一定攔得住改壞的地方。以 **穩定 > 好維護 > 好擴充** 的順序來看，這個換法拿到了同樣的擴充性而風險低得多。
 
 ### P2-26 🔲 指令集無法熱重載
 
@@ -451,7 +541,7 @@ IRC 限制是 30 秒 20 則，超過會被伺服器靜音約 30 分鐘。多人�
 
 ### P2-28 🔲 死碼與未宣告依賴
 
-- `utils/dump_obj_utils.py:1` — `import attr`，但 **`attrs` 沒有宣告在 `pyproject.toml`**，現在能跑純粹是靠 twitchAPI 的傳遞依賴。而且這個模組零呼叫端。
+- ~~`utils/dump_obj_utils.py:1` — `import attr`，但 **`attrs` 沒有宣告在 `pyproject.toml`**~~ → **已於第七輪補上宣告**（`a26e5d6`）。attrs 早就在 `uv.lock` 裡，宣告只是把既有事實寫明，不增加安裝成本。ruff 同時清掉了同一行三個未使用的 import（`json`、`logging`、`inspect`）。**這個模組仍然零呼叫端**，要不要留由頻道主決定。
 - `scripts/role_system.py:131` — `get_tigermeow_char()` 宣告回傳 `Character`，實際回傳 mongo 的 raw list，零呼叫端。
 - `tttest.py`、`GoldRushGame._timer`（宣告了 `threading.Timer` 但從未使用）。
 - `utils/vault_utils.py`、`utils/asset_file_utils.py`、`utils/error_utils.py` 有大量註解掉的舊碼。**這部分不會擅自刪除**，但建議決定去留：要留就移到 `docs/` 或獨立分支，留在 `utils/` 會讓人誤以為是活的。
@@ -477,11 +567,65 @@ IRC 限制是 30 秒 20 則，超過會被伺服器靜音約 30 分鐘。多人�
 
 ---
 
+### P2-40 🔲 `display_names[-1]` 對舊文件會 IndexError（第七輪新發現）
+
+`scripts/role_system.py:279,292` · `ai_actions/duel.py:74`
+
+`from_dict` 用 `doc.get("display_names", [])`，所以文件缺這個欄位時會拿到空 list，而三處 `display_names[-1]` 都會 `IndexError`。
+
+正常流程不會踩到（`get_or_create` 會補名字），但 `find_by_name()` 是直接撈文件、不補名字的——`!pk` 對上一份沒有 `display_names` 的舊文件就會炸。
+
+建議：`from_dict` 保證至少有一個名字，或改用 `display_names[-1] if display_names else username`。
+
+### P2-41 🔲 `duel.py` 未驗證模型輸出（第七輪新發現）
+
+`ai_actions/duel.py:78-81`
+
+```python
+winner = content_json.get("winner")
+battle_log = content_json.get("battle_log")
+return f"{battle_log} 勝利者為: @{winner}"
+```
+
+兩個 `.get()` 拿不到就回傳字面的 `"None 勝利者為: @None"`。而且 `@{winner}` 是模型自由生成的字串——它幻想出一個名字，Bot 就會去 @ 一個無關的人。
+
+建議：兩者缺一就回制式訊息；`winner` 必須是這兩位參戰者之一，否則不加 `@`。
+
+> 換行那一項已由 P1-38 的 `chat_sender` 兜住，此處不再需要各自處理。
+
+### P2-42 🔲 終極密碼開了之後無法取消（第七輪新發現）
+
+`games/guess_number_game.py`
+
+`_active` 只會在**猜中**時變回 `False`。沒人猜中的話這局永遠開著，而 `start()` 會回「⚠️ 終極密碼進行中」——也就是**整場開台都無法再開一局**，只能重啟 Bot。
+
+一桶金有倒數計時會自動結束，終極密碼沒有。
+
+建議二選一：加一個管理員專用的取消指令，或比照一桶金加上逾時自動結算（後者要一併決定彩金池怎麼處理）。這需要營運端一起決定，因此列為待處理而非直接改。
+
+---
+
 # P3｜工程品質
 
-### P3-31 🔲 沒有 lint / format 工具鏈
+### P3-31 ✅ 沒有 lint / format 工具鏈
 
-建議加 `ruff` + `black` + `pre-commit`，並在 `pyproject.toml` 的 dev group 一併宣告。
+**已導入 ruff**（`a26e5d6`）。第一次跑就抓到 34 個問題，其中兩個值得單獨記：
+
+1. `main.py` 的 `sys.path` hack 製造了 21 個 E402 → 直接把 P3-33 一起結掉（見該項）
+2. `oauth/server.py` 取了 `state` 卻從未使用（F841）→ 挖出一個真實的 CSRF 缺口（見 P3-43）
+
+移除 hack 時 ruff 又用 F821 抓到 `import sys` 不能一起刪——`__main__` 的 `finally` 有 `sys.exit()`。那種錯只會在**關機那一刻**才炸，測試與 `compileall` 都攔不到。
+
+**規則刻意選得保守**：只開 `F` / `E` / `W` / `B`（抓真問題），不開 `I`、`UP`、`SIM`。後者會把每個檔案的 import 重排或改寫既有的正確程式碼，製造巨大且沒有價值的 diff，還讓 `git blame` 失效。同理也**沒有**整份套用 `ruff format`。
+
+- `E501`（行太長）排除：專案有大量中文 f-string 訊息，為湊行寬拆字串反而更難讀
+- `tttest.py` 排除：手動試算稿，去留由頻道主決定
+- 沒有加 `black`：ruff 自帶 formatter，多一個工具只會多一套設定要同步
+- 沒有加 `pre-commit`：CI 已經擋住了，本機再擋一次的邊際效益低
+
+CI 已加上 lint 步驟——`compileall` 只保證「編得過」。
+
+> 未宣告依賴一併補上：`utils/dump_obj_utils.py` 真的 `import attr`，但 `attrs` 過去只靠 twitchAPI 的傳遞依賴才裝得到。已宣告進 `dependencies`（attrs 早就在 `uv.lock` 裡，宣告只是把既有事實寫明，不增加安裝成本）。那個模組目前零呼叫端，見 P2-28。
 
 ### P3-32 ⏸️ 沒有部署設定 —— **原判斷大部分是誤判**
 
@@ -558,9 +702,18 @@ await level_and_job_system.load_job_config()  # → 9091
 > 回歸驗證時把它還原回去，測試 log 裡當場就冒出「指令集載入完成，共 71 筆」——
 > 那是真的連上了本機的 Google Sheets 微服務。
 
-### P3-33 🔲 `main.py` 的 `sys.path` hack
+### P3-33 ✅ `main.py` 的 `sys.path` hack
 
 `main.py:4-5` 的 `sys.path.append` 已經沒有必要（uv 已將套件正式安裝進環境）。
+
+**已移除**（`a26e5d6`，P3-31 的連帶收穫——那四行製造了 21 個 E402）。
+
+動手前先查證，因為那是頻道主每次開台的啟動路徑（`uv run python src/tm_twitch_bot/main.py`，直接給腳本路徑而不是 `-m`）：
+
+1. 確認套件是 editable 安裝（`site-packages` 裡有 `_editable_impl_tm_twitch_bot.pth`），所以 `tm_twitch_bot` 本來就匯入得到
+2. 移除後**用 README 記載的真實啟動指令實測**：完整開機成功（token 刷新、Twitch 物件建立、指令集 73 筆載入）
+
+`import sys` 必須留下——`__main__` 的 `finally` 有 `sys.exit()`。
 
 ### P3-34 🔲 OAuth 工具的殘留與缺漏
 
@@ -571,6 +724,10 @@ await level_and_job_system.load_job_config()  # → 9091
 - `host="0.0.0.0"`
 
 雖然只是本地一次性工具，風險不高（`client_id` 在 OAuth 流程中本來就是半公開值，且 repo 為 private），但值得清理。
+
+> 第七輪補充：ruff 用 F841 抓到那行 `state = req.query_params.get("state")` **從未被使用**。回頭看兩個 docstring 才發現原因——第一個授權網址有 `&state=xyz123`，**現行的第二個沒有**，所以 Twitch 根本不會回傳 state，那行永遠是 `None`。
+>
+> 已把死碼移除並在原處註明缺口（`a26e5d6`），刻意**不**假裝補上防護：真要補得三件一起做——產生隨機 state、放進手動貼的授權網址、回來時比對——那會改動頻道主手動執行的流程，不屬於 lint 清理的範圍。
 
 ### P3-35 🔲 時區處理不一致
 
@@ -584,14 +741,17 @@ await level_and_job_system.load_job_config()  # → 9091
 
 ## 建議的下一批處理順序
 
-**P0、P1、P2 的高風險項目已全數結案**（P0-7、P1-12 為評估後決定不處理，P3-32 為誤判撤回）。
-剩下的 15 項都不會造成資料錯誤或服務中斷，依投報率排序：
+**P0 與 P1 已全數結案**（P0-7、P1-12 為評估後決定不處理）。剩下的 12 項都不會造成資料錯誤或服務中斷。
 
-1. **P3-32**（服務清單）——15 分鐘的文件工作：四個微服務的名稱／port／repo 位置／啟動指令
-2. **P3-31**（lint / format 工具鏈）——CI 已經在跑了，加 `ruff` 幾乎是免費的
-3. **P2-25 ~ P2-29**——`_SingletonMeta` 重複六份、VIP 名額全表撈、快取無 TTL 等，都是維護性議題
-4. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
-5. **P3-33、P3-34、P3-36**——`sys.path` hack、OAuth 工具殘留、硬編碼的指令集網址
+第七輪之後的建議順序：
+
+1. **P2-42**（終極密碼無法取消）——唯一「開台當下就會卡住一個功能」的項目，但需要營運端一起決定取消方式（管理員指令 vs 逾時自動結算）
+2. **P2-40、P2-41**——`display_names[-1]` 的 IndexError 與 `duel.py` 未驗證模型輸出，兩項都在 `!pk` 這條路上，一起做最省事
+3. **`duel.py` / `gpt_chat_session.py` 補測試**——目前覆蓋率 0%，而這兩支是唯二「有真邏輯卻零覆蓋」的模組（見附錄 B）
+4. **P3-32**（服務清單）——15 分鐘的文件工作：四個微服務的名稱／port／repo 位置／啟動指令
+5. **P2-26 ~ P2-29**——指令集熱重載、`_SingletonMeta` 重複八份、GPT session 共用上下文、表頭處理不一致
+6. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
+7. **P3-34、P3-36**——OAuth 工具殘留、硬編碼的指令集網址
 
 > 目前唯一還「知道有問題但沒解」的是 P2-23 的並行扣款：兩個流程同時扣款仍可能把 `gold` 扣成負數。
 > 要解需要微服務端支援條件式更新並回傳 `matched_count`，那是微服務那邊的工程。
@@ -744,3 +904,30 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 | 延遲多久？ | 比對 log 的時間戳與事件裡的 `started_at`，以及自己實際按下開台的時間 |
 
 若這三題的答案都令人滿意，才有資格進行 A-5 的第 2 步（Helix 對帳）。若發現會漏、會抖，就代表 B 架構的成本比預估更高，維持 A 的決定更加穩固。
+
+---
+
+# 附錄 B｜測試覆蓋率現況
+
+`uv run pytest --cov` — **254 項測試，整體 66%**（1720 敘述句中 588 未覆蓋）。
+`if __name__ == "__main__":` 的手動試跑區塊與 `tttest.py` 不列入計算，那些不是產品路徑。
+
+## 依風險分層
+
+| 層級 | 模組 | 覆蓋率 |
+| --- | --- | --- |
+| **完全覆蓋**（歷次修過的高風險模組） | `chat_sender`、`tm_ai_agent`、`n8n_ai_agent`、`gacha_handler`、`error_utils` | 100% |
+| **高** | `log_utils` 96%、`token_manager` 95%、`guess_number_game` 94%、`rank_system` 94%、`yaml_utils` 92%、`role_system` 91%、`message_controller` 91% | 88–96% |
+| **中** | `level_and_job_system` 88%、`http_utils` 86%、`greeter` 84%、`gold_rush_game` 83%、`vip_system` 82%、`command_dispatcher` 79% | 79–88% |
+| **偏低** | `mongo_atlas` 72%、`task_scheduler` 66%、`google_sheets` 65%、`main` 32%、`twitch_vips_api` 24% | 24–72% |
+| **零覆蓋** | `duel`、`gpt_chat_session`、`youtube`、`openai`、`call_timer`、`daily_food_picker`、`daily_meme_picker`、`dump_obj_utils` | 0% |
+
+## 怎麼看這些數字
+
+**不必補到高的**：`openai`、`youtube`、`twitch_vips_api`、`google_sheets`、`mongo_atlas` 的未覆蓋部分幾乎都是微服務的薄 HTTP 包裝——真正的風險（重試策略、逾時、`find` 回傳 `None`）已經分別由 `test_http_utils` 與 `test_mongo_find_contract` 蓋住了，包裝層再測一次只是重複。`daily_food_picker` / `daily_meme_picker` / `call_timer` 都是十幾行的隨機挑選器。
+
+**`main.py` 32% 是合理的**：未覆蓋的是 `event_ready`、`on_points`、token 同步這些相依 twitchio 內部結構的部分，要測得先造一整套假的 twitchio。已覆蓋的是真正有邏輯分支的 `shutdown()` 與 `load_sheet_config()`。
+
+**真正該補的只有兩支**：`duel.py` 與 `gpt_chat_session.py` 都是 0%，卻都有實質邏輯（前者組 prompt、解析結構化輸出、判定勝負；後者管上下文裁切）。P2-27 與 P2-41 記的問題都在這兩支裡。
+
+**刻意沒在 CI 設覆蓋率門檻**：現在補測試的順序是照風險排的。設了門檻會變成「為了數字去補薄包裝」，把力氣花在錯的地方。

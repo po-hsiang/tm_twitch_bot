@@ -103,7 +103,7 @@
 - **twitchAPI**（4.x）：負責 EventSub WebSocket（忠誠點數兌換）與 Helix API（VIP 授予/移除）。
 - **oauth/server.py**：FastAPI 撰寫的 OAuth callback 伺服器（port 8096），用於首次取得 access / refresh token。
 - **Google Sheets 作為 CMS**：指令集、轉職表、吃啥、諧音梗、冒險台詞等內容皆存放於試算表，營運人員可直接編輯。
-- **n8n TM AI Agent**：自架 n8n 上的 AI Agent 工作流，多客戶端共用（Discord bot 也在用）。人設、對話記憶與工具呼叫都在 n8n 端；n8n 會偵測 `channel_id` 的 `twitch:` 前綴並回純文字單行，所以 Bot 這側只負責送齊欄位、排隊，以及換行與長度兩道 Twitch 協定防線。
+- **n8n TM AI Agent**：自架 n8n 上的 AI Agent 工作流，多客戶端共用（Discord bot 也在用）。人設、對話記憶與工具呼叫都在 n8n 端；n8n 會偵測 `channel_id` 的 `twitch:` 前綴並回純文字單行，所以 Bot 這側只負責送齊欄位與排隊，回覆不做任何後處理（換行與長度的協定防線統一在 `utils/chat_sender.py`）。
 
 ---
 
@@ -115,7 +115,7 @@ tm_twitch_bot/
 ├── uv.lock
 ├── .env                        # 機敏資訊（token / secret / api key），不進版控
 ├── .env.example                # .env 範本
-├── .github/workflows/ci.yml    # CI：uv sync + compileall + pytest
+├── .github/workflows/ci.yml    # CI：uv sync + compileall + ruff + pytest
 ├── logs/                       # 執行期日誌（輪替，不進版控）
 ├── docs/
 │   ├── CODE_REVIEW.md          # 程式碼健檢報告（缺陷清單與處置狀態）
@@ -157,7 +157,7 @@ tm_twitch_bot/
 │       ├── yaml_utils.py           # 設定載入（YAML + .env 合併）
 │       ├── token_manager.py        # Token 唯一來源（刷新後同步記憶體與 .env）
 │       ├── http_utils.py           # 帶重試的非同步 HTTP 請求（httpx.AsyncClient）
-│       ├── chat_sender.py          # 統一發話出口（速率限制 + 長度截斷）
+│       ├── chat_sender.py          # 統一發話出口（換行整平 + 長度截斷 + 速率限制）
 │       ├── log_utils.py            # Logger（主控台彩色 + 檔案輪替）
 │       ├── probability_utils.py    # 加權隨機
 │       └── ...
@@ -179,6 +179,9 @@ tm_twitch_bot/
     ├── test_tm_ai_agent.py
     ├── test_shutdown.py
     ├── test_http_utils.py
+    ├── test_guess_number_game.py
+    ├── test_gacha_handler.py
+    ├── test_token_manager.py
     └── test_log_utils.py
 ```
 
@@ -350,15 +353,17 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 uv run pytest
 ```
 
-目前 204 項測試，約 1 秒跑完。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
+目前 254 項測試，約 0.4 秒跑完，整體覆蓋率 66%（`uv run pytest --cov`）。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、換行與長度防線、同頻道排隊、七種失敗模式）。
+覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、同頻道排隊、七種失敗模式）、`guess_number_game` 與 `gacha_handler`（金幣邊界與設定表健檢）、`token_manager`（token 寫回順序）。
+
+覆蓋率的分層解讀（哪些該補、哪些刻意不補）見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 附錄 B。
 
 尚未覆蓋的部分與補齊順序列在 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 的 P2-19。
 
 ### CI
 
-`push`（master／main）、`pull_request` 與手動觸發時，GitHub Actions 會跑 `uv sync --locked --dev` → `compileall` → `pytest`（`.github/workflows/ci.yml`）。因為測試全離線，CI 不需要任何 secrets。
+`push`（master／main）、`pull_request` 與手動觸發時，GitHub Actions 會跑 `uv sync --locked --dev` → `compileall` → `ruff check` → `pytest`（`.github/workflows/ci.yml`）。因為測試全離線，CI 不需要任何 secrets。
 
 > Private repo 的狀態徽章對未登入者無法顯示，因此這裡不放 badge，請直接看 repo 的 Actions 頁籤。
 
@@ -380,7 +385,8 @@ uv run pytest
 - **機密管理**：所有憑證存於 `.env`（已列入 `.gitignore`）。請勿把 `.env` 分享給任何人；懷疑外洩時請立即輪替 Twitch Client Secret 與 OpenAI API Key。
 - **啟動順序**：Google Sheets 的指令集與轉職表在 Bot 啟動的 bootstrap 階段載入（其餘資料為首次使用時惰性載入）。**四個微服務任何一個沒開都不會擋住啟動**：9091 沒開時 Bot 會降級上線（沒有 `!` 指令，但經驗值、升級、`!排行`、遊戲、VIP 掃描照常），並在聊天室公告，之後每 5 分鐘自動重試，服務開起來就會恢復；9092／9093／9094 沒開則只影響對應指令。單純 import 模組（開發、測試）不需要任何微服務。
 - **非同步 HTTP**：所有對微服務與 Twitch Helix 的請求都走共用的 `httpx.AsyncClient`，重試等待不會阻塞事件圈。
-- **發話速率**：所有進聊天室的訊息都經過 `utils/chat_sender.py`，限制 30 秒 18 則（Twitch 官方是 20 則，超過會被靜音約 30 分鐘），單則超過 500 字元自動截斷。log 出現「已達自訂發話上限」代表當下正在排隊，不是錯誤。
+- **發話速率與格式**：所有進聊天室的訊息都經過 `utils/chat_sender.py`——限制 30 秒 18 則（Twitch 官方是 20 則，超過會被靜音約 30 分鐘）、單則超過 500 字元自動截斷、多行訊息整平成單行並以 ` / ` 分隔。換行那一道是協定層的必要保護：IRC 以換行作為一則訊息的結尾，而 twitchio 只驗長度不驗換行，混進 `
+` 會讓後半段被當成另一行協定內容送出去（見 CODE_REVIEW P1-38）。**新增指令時不必自己處理這些**，但也不要刻意產生多行字串。log 出現「已達自訂發話上限」代表當下正在排隊，不是錯誤。
 - **關閉方式**：直接按 Ctrl+C 即可，會依序取消定時排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，最多等 10 秒。收尾卡住時再按一次 Ctrl+C 會強制結束。
 - **指令集熱更新限制**：指令集於啟動時載入一次，修改試算表後需重啟 Bot 才會生效。
 - **twitchio 版本相依**：`main.py` 的 token 同步機制寫入了 twitchio 的私有屬性（`_http.token`、`_connection._token`）。套件已釘選 `twitchio>=2.10,<3`，升級時務必一併驗證。
