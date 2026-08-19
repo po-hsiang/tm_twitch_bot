@@ -29,7 +29,13 @@ def load_yaml() -> dict:
     merged_config["twitch"]["client_secret"] = _require_env("TWITCH_CLIENT_SECRET")
     merged_config["twitch"]["access_token"] = _require_env("TWITCH_ACCESS_TOKEN")
     merged_config["twitch"]["refresh_token"] = _require_env("TWITCH_REFRESH_TOKEN")
-    merged_config["openai"]["api_key"] = _require_env("OPENAI_API_KEY")
+    # OPENAI_API_KEY 從 _require_env 降級為選填。
+    # 它原本同時支撐 !gpt 與 !pk，硬性要求還算合理；但 AI 問答已全面改走
+    # n8n（gpt_chat_session 已移除），現在只剩 !pk 一個指令用得到。
+    # 為了一個娛樂指令讓整個 Bot 起不來，與 P1-37 的取捨相反。
+    merged_config["openai"]["api_key"] = os.getenv("OPENAI_API_KEY", "")
+    if not merged_config["openai"]["api_key"]:
+        logger.warning("缺少環境變數 OPENAI_API_KEY，!pk 對戰指令將無法使用")
 
     # n8n AI Agent 的 webhook secret 刻意「不」用 _require_env：
     # 少了它只會讓 AI 問答指令失效，不該讓整個 Bot 起不來（同 P1-37 的取捨）。

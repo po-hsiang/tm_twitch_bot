@@ -537,7 +537,7 @@
         <li><span class="k">外部服務依賴</span><span class="v">本機 4 個（:9091~:9094）+ n8n AI Agent</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">294 項（全部離線，覆蓋率 70%）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">303 項（全部離線，覆蓋率 72%）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -603,13 +603,17 @@
       </button>
       <button class="feature" type="button">
         <div class="f-head"><h3>AI 互動</h3><span class="f-toggle">+</span></div>
-        <span class="f-mod">ai_actions / svc_client.openai</span>
-        <p>!gpt 人設聊天與 !pk AI 旁白對戰，皆走 OpenAI 服務。</p>
+        <span class="f-mod">ai_actions.tm_ai_agent / svc_client.openai</span>
+        <p>AI 問答走 n8n TM AI Agent；!pk AI 旁白對戰走 OpenAI 微服務。</p>
         <div class="f-detail">
-          <strong>!gpt</strong>：具「虎喵粉絲」人設的聊天 Session，歷史存 MongoDB，
-          超過 4096 token 自動裁掉最舊的一組問答。
+          <strong>!GPT / !AI / !LLM / !問</strong>：轉送自架 n8n 的「TM AI Agent」。
+          人設「虎喵小粉絲」、對話記憶（同頻道共享最近 10 輪）與工具呼叫全在 n8n 端，
+          模型會自行判斷要不要查熱搜、搜尋、維基、算數學或畫圖表。
+          <strong>原本並存的 OpenAI 聊天路徑（gpt_chat_session）已於第八輪移除</strong>——
+          n8n 端提供上下文記憶與工具，也不必為換模型維護不同廠商的微服務。
           <strong>!pk</strong>：取雙方角色數值組成對戰資訊，要求模型以 JSON Schema 結構化輸出
-          勝者與約 25 字的戲劇化戰報。
+          勝者與約 25 字的戲劇化戰報。這是 OpenAI 微服務唯一的呼叫端——
+          n8n 的 Agent 只回純文字，拿不到結構化欄位。
         </div>
       </button>
       <button class="feature" type="button">
@@ -692,7 +696,7 @@
         <div class="arch-layer-label">LAYER 4 · 本地微服務（獨立專案，需先啟動）</div>
         <div class="arch-row cols-5">
           <button class="arch-node ext" type="button" data-node="gs"><span class="n-title">Google Sheets</span><span class="n-sub">:9091 指令 / 文案</span></button>
-          <button class="arch-node ext" type="button" data-node="oa"><span class="n-title">OpenAI</span><span class="n-sub">:9092 GPT / 對戰</span></button>
+          <button class="arch-node ext" type="button" data-node="oa"><span class="n-title">OpenAI</span><span class="n-sub">:9092 僅 !pk 對戰</span></button>
           <button class="arch-node ext" type="button" data-node="mg"><span class="n-title">MongoDB Atlas</span><span class="n-sub">:9093 資料存取</span></button>
           <button class="arch-node ext" type="button" data-node="yt"><span class="n-title">YouTube</span><span class="n-sub">:9094 歌單</span></button>
           <button class="arch-node ext" type="button" data-node="ai"><span class="n-title">n8n TM AI Agent</span><span class="n-sub">webhook AI 問答</span></button>
@@ -928,7 +932,7 @@
           </thead>
           <tbody>
             <tr><td>Google Sheets</td><td>9091</td><td><s>Bot 完全起不來</s> → 降級上線，5 分鐘自動重試</td><td><code>main.load_sheet_config</code></td></tr>
-            <tr><td>OpenAI</td><td>9092</td><td><code>!gpt</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
+            <tr><td>OpenAI</td><td>9092</td><td><code>!pk</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
             <tr><td>MongoDB</td><td>9093</td><td>該次訊息的獎勵存不了並記 log，其餘正常</td><td><code>message_controller</code></td></tr>
             <tr><td>YouTube</td><td>9094</td><td><code>!找歌</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
           </tbody>
@@ -1012,7 +1016,7 @@
             <tr><td class="cmd">!抽</td><td>20 Gold 十連抽</td><td class="mod">gacha_handler.gacha</td></tr>
             <tr><td class="cmd">!猜 &lt;數字&gt;</td><td>終極密碼猜數字（30 分鐘沒人猜中自動流局）</td><td class="mod">guess_number_game.guess</td></tr>
             <tr><td class="cmd">!投 &lt;金額&gt;</td><td>一桶金投注</td><td class="mod">gold_rush_game.toss</td></tr>
-            <tr><td class="cmd">!gpt &lt;問題&gt;</td><td>與 AI 聊天（虎喵粉絲人設）</td><td class="mod">gpt_chat_session.ask</td></tr>
+            <tr><td class="cmd">!gpt / !AI / !LLM / !問</td><td>與 AI 聊天（n8n TM AI Agent，會自行使用工具）</td><td class="mod">tm_ai_agent.ask</td></tr>
             <tr><td class="cmd">!pk @對象</td><td>AI 旁白 RPG 對戰</td><td class="mod">duel.pk</td></tr>
             <tr><td class="cmd">!vip</td><td>100 Gold 兌換 31 天 VIP</td><td class="mod">vip_system.redeem</td></tr>
             <tr><td class="cmd">!吃</td><td>隨機推薦食物</td><td class="mod">daily_food_picker.pick</td></tr>
@@ -1158,13 +1162,13 @@
     },
     oa: {
       title: "OpenAI 微服務", file: "localhost:9092",
-      desc: "代理 OpenAI API：/conversation 做多輪聊天、/structured_output 做 JSON Schema 結構化輸出。",
-      points: ["模型設定於 config（目前 gpt-5-nano）", "!gpt 與 !pk 的後端", "api_key 由 Bot 端隨請求傳遞"]
+      desc: "代理 OpenAI API 的 /structured_output（JSON Schema 結構化輸出）。第八輪起只服務 !pk 一個指令。",
+      points: ["模型設定於 config（目前 gpt-5-nano）", "!pk 是唯一呼叫端——它需要結構化欄位，n8n 的 Agent 只回純文字", "/conversation 與 gpt_chat_session 已隨 AI 問答收斂移除", "OPENAI_API_KEY 已降為選填，缺少時 Bot 照常啟動"]
     },
     mg: {
       title: "MongoDB Atlas 微服務", file: "localhost:9093",
       desc: "代理 MongoDB Atlas 的 CRUD 與索引操作，是所有持久化資料的出入口。",
-      points: ["tm_twitch_users：角色資料與發言統計", "tm_twitch_vips：VIP 狀態與兌換歷史", "gpt_chat_sessions：GPT 對話歷史"]
+      points: ["tm_twitch_users：角色資料與發言統計", "tm_twitch_vips：VIP 狀態與兌換歷史", "gpt_chat_sessions：遺留，程式已不再讀寫（要不要清掉由頻道主決定）"]
     },
     yt: {
       title: "YouTube 微服務", file: "localhost:9094",
@@ -1365,10 +1369,10 @@
      desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。（已補上 graceful shutdown：SIGINT / SIGTERM 會依序取消排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，finally 裡的 sys.exit 也已移除。）",
      fix:"剩下的部分：外層加 supervisor 迴圈搭配指數退避重連。依「開台時手動啟動」的營運決策，這一項已從必要降為加分項——當次開台故障是可接受的。",
      files:["main.py:179","scripts/vip_system.py"]},
-    {cat:"quality", sev:"mid", title:"_SingletonMeta 重複貼了八份",
-     desc:"八個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改八個地方。",
+    {cat:"quality", sev:"mid", title:"_SingletonMeta 重複貼了七份",
+     desc:"七個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改七個地方（第八輪隨 gpt_chat_session 移除少了一份）。",
      fix:"抽出到 utils/singleton.py 供全專案共用。",
-     files:["svc_client/*","games/*","ai_actions/gpt_chat_session.py"]},
+     files:["svc_client/*","games/*","scripts/vip_system.py"]},
     {cat:"quality", sev:"mid", title:"twitchio 2.x 已停止維護",
      desc:"專案同時相依 twitchio 2.x（聊天）與 twitchAPI 4.x（EventSub / Helix）。twitchio 2.x 已 EOL，且兩套件的 token 管理彼此獨立，是刷新不同步問題的根源之一。",
      fix:"評估升級 twitchio 3.x，或統一改用 twitchAPI 內建的 Chat 功能，收斂為單一相依與單一 token 生命週期。",

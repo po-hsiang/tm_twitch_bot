@@ -16,6 +16,9 @@ twitch:
 google_sheets:
   svc_url: http://localhost:9091
   sheet_url: https://docs.google.com/spreadsheets/d/1-UQ7KBWK09ZCHZKFycymk04BaB5oW6DJ0vi2N7x6qQE/edit?usp=sharing
+# OpenAI 微服務。AI 問答已改走 n8n（見 tm_ai_agent），這裡只剩 !pk 還在用——
+# 它需要模型回傳符合 JSON Schema 的結構化輸出，而 n8n 的 Agent 只回純文字。
+# api_key 來自 .env 的 OPENAI_API_KEY，不放這裡
 openai:
   svc_url: http://localhost:9092
   model: gpt-5-nano

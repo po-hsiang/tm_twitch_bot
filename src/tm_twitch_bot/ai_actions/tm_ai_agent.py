@@ -11,8 +11,10 @@
 保證回純文字單行；而換行與長度這兩道 Twitch 協定防線本來就該由
 唯一的出站瓶頸 utils/chat_sender.py 負責，每個指令各做一份只會漏。
 
-原本的 OpenAI 微服務路徑（ai_actions/gpt_chat_session.py）刻意保留不動，
-兩條路可以並存，要切換只需要改 Google Sheets 指令集的「內容」欄。
+這是**唯一**的 AI 問答路徑。原本並存的 OpenAI 微服務路徑
+（ai_actions/gpt_chat_session.py）已在觀察一段時間後移除——
+n8n 端提供上下文記憶與工具呼叫，也不必為了換模型維護不同廠商的微服務。
+svc_client/openai.py 只剩 !pk 還在用（它需要結構化輸出）。
 """
 
 from tm_twitch_bot.svc_client.n8n_ai_agent import (

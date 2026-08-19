@@ -4,7 +4,7 @@
 | --- | --- |
 | 健檢日期 | 2026-08-09 |
 | 基準版本 | `584821e`（健檢起點） |
-| 最後更新 | 2026-08-19，第七輪修正後 |
+| 最後更新 | 2026-08-20，第八輪修正後 |
 | 範圍 | `src/tm_twitch_bot/` 全部模組、`pyproject.toml`、版控與部署設定 |
 | 評估準則 | 依使用者指定的優先序：**穩定 > 好維護 > 好擴充** |
 
@@ -103,9 +103,28 @@
 | P3-34 | OAuth callback 沒驗 `state` | 🔲 仍待處理，但缺口已在程式碼中明確註明 |
 
 測試總數 **294 項**，全部離線，執行時間 0.4 秒；整體覆蓋率 **70%**。
+
+### 第八輪
+
+| 編號 | 項目 | 狀態 |
+| --- | --- | --- |
+| P2-27 | GPT session 是全頻道共用單一上下文 | ✅ 隨 `gpt_chat_session.py` 一併移除 |
+| P2-21 | `_SingletonMeta` 被複製了 8 份 | 🔲 降為 7 份（少了一個檔案，本身未解） |
+| — | AI 問答收斂為單一路徑（移除 OpenAI 微服務的聊天路徑） | ✅ 🧪 |
+| — | `OPENAI_API_KEY` 從必填降為選填 | ✅ 🧪 |
+
+`ai_actions/gpt_chat_session.py` 移除，`svc_client/openai.py` 瘦身為只保留
+`structured_output()`——**`!pk` 是它唯一的呼叫端**，那個指令需要模型回傳
+符合 JSON Schema 的欄位，而 n8n 的 TM AI Agent 只回純文字。
+
+移除前實測 n8n 端 7/7 通過，重點是確認那些原本由 `gpt_chat_session` 自己
+維護的能力真的都在：上下文記憶（記得使用者說過的偏好）、同頻道記憶共享
+（A 問得到 B 說過的事）、換 `channel_id` 後記憶正確隔離，另加三種工具呼叫。
+
+測試總數 **303 項**，覆蓋率 **72%**（少了 61 個敘述句要維護）。
 覆蓋率細節見 [附錄 B](#附錄-b測試覆蓋率現況)。
 
-剩餘 9 項待處理（另加 P3-32 殘留的服務清單文件），內容如下。
+剩餘 8 項待處理（另加 P3-32 殘留的服務清單文件），內容如下。
 
 ---
 
@@ -453,9 +472,11 @@ twitchio 的 `Messageable.send` 是把內容原樣內插進 `PRIVMSG #頻道 :{c
 
 > Private repo 的 CI 徽章對未登入者無法顯示，因此 README 以文字說明取代徽章。
 
-### P2-21 🔲 `_SingletonMeta` 被複製了 8 份
+### P2-21 🔲 `_SingletonMeta` 被複製了 7 份
 
-`svc_client/google_sheets.py`、`svc_client/mongo_atlas.py`、`svc_client/openai.py`、`svc_client/youtube.py`、`ai_actions/gpt_chat_session.py`、`scripts/vip_system.py`、`games/gold_rush_game.py`、`games/guess_number_game.py`
+`svc_client/google_sheets.py`、`svc_client/mongo_atlas.py`、`svc_client/openai.py`、`svc_client/youtube.py`、`scripts/vip_system.py`、`games/gold_rush_game.py`、`games/guess_number_game.py`
+
+> 第八輪從 8 份降為 7 份——`ai_actions/gpt_chat_session.py` 已移除（見 P2-27）。
 
 建議抽到 `utils/singleton.py`。另外它用的是 `threading.Lock`，但整個程式跑在單一事件圈上——語意上並不需要這把鎖。
 
@@ -531,13 +552,15 @@ twitchio 的 `Messageable.send` 是把內容原樣內插進 `PRIVMSG #頻道 :{c
 
 注意：`_load_function` 上的 `lru_cache` 會讓函式綁定黏住，重載時要一併 `cache_clear()`。
 
-### P2-27 🔲 GPT session 是全頻道共用單一上下文
+### P2-27 ✅ GPT session 是全頻道共用單一上下文 —— **隨模組移除而消滅**
 
-`ai_actions/gpt_chat_session.py:23`
+`ai_actions/gpt_chat_session.py`（已刪除）
 
-所有觀眾共用 `session_id = "tm_twitch"` 一份歷史，彼此可以污染上下文，prompt injection 面很大（system prompt 第 9 條有防，但共用歷史仍是弱點）。而且沒有鎖，並發 `!gpt` 會交錯 append。
+原本的問題：所有觀眾共用 `session_id = "tm_twitch"` 一份歷史，彼此可以污染上下文，prompt injection 面很大（system prompt 第 9 條有防，但共用歷史仍是弱點）；沒有鎖，並發 `!gpt` 會交錯 append；另外 `_pop_oldest_pair` 在 `len <= 3` 時 log 寫「移除最前面的問答」卻直接 return 沒移除，訊息與行為不符。
 
-另外 `_pop_oldest_pair`（:91）在 `len <= 3` 時 log 寫「移除最前面的問答」卻直接 return 沒移除，訊息與行為不符。
+**第八輪整支模組移除**，這些問題一併消滅。AI 問答改由 n8n 的 TM AI Agent 負責，記憶分組鍵是帶 `twitch:` 前綴的 `channel_id`（已實測換頻道後記憶正確隔離），並行則由 `tm_ai_agent` 的同頻道排隊擋住。
+
+> **資料庫殘留**：MongoDB 的 `gpt_chat_sessions` collection 還在，程式已不再讀寫。要不要清掉由頻道主決定——本專案不會擅自刪別人的資料。
 
 ### P2-28 🔲 死碼與未宣告依賴
 
@@ -758,12 +781,13 @@ await level_and_job_system.load_job_config()  # → 9091
 
 第七輪之後的建議順序：
 
-1. **`gpt_chat_session.py` 補測試**——覆蓋率仍是 0%，是**唯一**「有真邏輯卻零覆蓋」的模組（`duel.py` 已隨 P2-41 補到 65%）。P2-27 記的共用上下文問題就在這支裡，補測試與修那一項可以一起做
-2. **P3-32**（服務清單）——15 分鐘的文件工作：四個微服務的名稱／port／repo 位置／啟動指令
-3. **P2-26**（指令集熱重載）——改了 Google Sheets 就得重啟，與「試算表當 CMS」的初衷相違。注意 `_load_function` 的 `lru_cache` 要一併 `cache_clear()`
-4. **P2-21、P2-22、P2-28、P2-29**——`_SingletonMeta` 重複八份、config 無 schema 驗證、死碼去留、表頭處理不一致
-5. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
-6. **P3-34、P3-36**——OAuth 工具殘留（含 `state` 的 CSRF 缺口）、硬編碼的指令集網址
+1. **P3-32**（服務清單）——15 分鐘的文件工作：**現在只需要記三個**（9091 Sheets、9093 MongoDB、9094 YouTube）加上 9092 只服務 `!pk` 的說明
+2. **P2-26**（指令集熱重載）——改了 Google Sheets 就得重啟，與「試算表當 CMS」的初衷相違。注意 `_load_function` 的 `lru_cache` 要一併 `cache_clear()`
+3. **P2-21、P2-22、P2-28、P2-29**——`_SingletonMeta` 重複七份、config 無 schema 驗證、死碼去留、表頭處理不一致
+4. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
+5. **P3-34、P3-36**——OAuth 工具殘留（含 `state` 的 CSRF 缺口）、硬編碼的指令集網址
+
+> 第八輪之後**已經沒有「有真邏輯卻零覆蓋」的模組**（原本唯一的那支 `gpt_chat_session.py` 隨 AI 路徑收斂一併移除），所以補測試不再是第一順位。
 
 > 目前唯一還「知道有問題但沒解」的是 P2-23 的並行扣款：兩個流程同時扣款仍可能把 `gold` 扣成負數。
 > 要解需要微服務端支援條件式更新並回傳 `matched_count`，那是微服務那邊的工程。
@@ -921,7 +945,7 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 
 # 附錄 B｜測試覆蓋率現況
 
-`uv run pytest --cov` — **294 項測試，整體 70%**（1798 敘述句中 542 未覆蓋）。
+`uv run pytest --cov` — **303 項測試，整體 72%**（1737 敘述句中 479 未覆蓋）。
 `if __name__ == "__main__":` 的手動試跑區塊與 `tttest.py` 不列入計算，那些不是產品路徑。
 
 ## 依風險分層
@@ -931,8 +955,8 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 | **完全覆蓋**（歷次修過的高風險模組） | `chat_sender`、`tm_ai_agent`、`n8n_ai_agent`、`gacha_handler`、`error_utils` | 100% |
 | **高** | `log_utils` 96%、`token_manager` 95%、`guess_number_game` 93%、`rank_system` 94%、`yaml_utils` 92%、`role_system` 91%、`message_controller` 91% | 91–96% |
 | **中** | `level_and_job_system` 88%、`http_utils` 86%、`greeter` 84%、`gold_rush_game` 83%、`vip_system` 82%、`command_dispatcher` 79%、`task_scheduler` 79% | 79–88% |
-| **偏低** | `mongo_atlas` 72%、`duel` 65%、`google_sheets` 65%、`main` 32%、`twitch_vips_api` 24% | 24–72% |
-| **零覆蓋** | `gpt_chat_session`、`youtube`、`openai`、`call_timer`、`daily_food_picker`、`daily_meme_picker`、`dump_obj_utils` | 0% |
+| **偏低** | `openai` 73%、`mongo_atlas` 72%、`duel` 65%、`google_sheets` 65%、`main` 32%、`twitch_vips_api` 24% | 24–73% |
+| **零覆蓋** | `youtube`、`call_timer`、`daily_food_picker`、`daily_meme_picker`、`dump_obj_utils` | 0% |
 
 ## 怎麼看這些數字
 
@@ -942,6 +966,6 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 
 **`duel.py` 65%**：未覆蓋的是 `pk()` 的前置檢查（要造假的 Mongo 查詢）。真正的風險——模型輸出的驗證——已完全覆蓋（P2-41）。
 
-**真正還缺的只有 `gpt_chat_session.py`**：0% 且有實質邏輯（管上下文裁切）。P2-27 記的共用上下文與 `_pop_oldest_pair` 的 log／行為不符都在這支裡。
+**現在已經沒有「有真邏輯卻零覆蓋」的模組了**：第八輪移除 `gpt_chat_session.py`（原本唯一的那一支）之後，剩下的 0% 全部是十幾行的隨機挑選器或薄包裝。`yaml_utils` 新增 `test_config_loading.py` 把「哪些環境變數是硬性要求」的分界釘住——那種決策最容易被無意反轉。
 
 **刻意沒在 CI 設覆蓋率門檻**：現在補測試的順序是照風險排的。設了門檻會變成「為了數字去補薄包裝」，把力氣花在錯的地方。
