@@ -142,9 +142,23 @@ def test_add_entry_rejected_when_no_round_is_running(game):
     assert game.add_entry(FakeChar(), "5") == "⚠️ 目前沒有進行中的一桶金"
 
 
-def test_add_entry_rejects_non_numeric(game):
+@pytest.mark.parametrize(
+    "raw", ["五", "abc", "", " ", "-1", "1.5", "²"], ids=
+    ["中文數字", "英文", "空字串", "空白", "負數", "小數", "上標2"]
+)
+def test_add_entry_rejects_non_numeric(game, raw):
+    """「²」是關鍵案例：isdigit() 對它回 True，但 int("²") 會 ValueError。
+
+    用 isdigit() 的話這裡不會被擋下來，而是一路走到 int() 才爆掉。
+    """
     game._active = True
-    assert game.add_entry(FakeChar(), "五") == "⚠️ 請輸入正整數"
+    assert game.add_entry(FakeChar(), raw) == "⚠️ 請輸入正整數"
+
+
+def test_full_width_digits_are_accepted(game):
+    """全形數字 int() 收得下，就不該擋——觀眾用中文輸入法很容易打出來。"""
+    game._active = True
+    assert "請輸入正整數" not in game.add_entry(FakeChar(gold=100), "５")
 
 
 def test_add_entry_rejects_over_the_per_person_cap(game):

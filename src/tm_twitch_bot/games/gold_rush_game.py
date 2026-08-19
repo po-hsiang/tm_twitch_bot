@@ -59,7 +59,9 @@ class GoldRushGame(metaclass=_SingletonMeta):
     def add_entry(self, char: Character, raw_amount: str) -> str:
         if not self._active:
             return "⚠️ 目前沒有進行中的一桶金"
-        elif not raw_amount.isdigit():
+        # 用 isdecimal() 而不是 isdigit()：isdigit() 對「²」這種上標也回 True，
+        # 但 int("²") 會 ValueError。isdecimal() 才與 int() 收的字元集一致。
+        elif not raw_amount.isdecimal():
             return "⚠️ 請輸入正整數"
 
         amount = int(raw_amount)

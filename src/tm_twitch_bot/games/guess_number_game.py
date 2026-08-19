@@ -65,7 +65,9 @@ class GuessNumberGame(metaclass=_SingletonMeta):
             return "⚠️ 目前沒有進行中的終極密碼"
         elif self.GUESS_FEE > char.gold:
             return f"⚠️ 餘額不足 {self.GUESS_FEE}，您目前只有 {char.gold} Gold"
-        elif not raw_number.isdigit():
+        # 用 isdecimal() 而不是 isdigit()：isdigit() 對「²」這種上標也回 True，
+        # 但 int("²") 會 ValueError。isdecimal() 才與 int() 收的字元集一致。
+        elif not raw_number.isdecimal():
             return "⚠️ 請輸入正整數"
 
         number = int(raw_number)
