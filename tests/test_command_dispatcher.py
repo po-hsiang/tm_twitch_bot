@@ -20,10 +20,12 @@ def _isolate_dispatcher_state():
     """每個測試都從乾淨的 COMMAND_SET 與函式快取開始。"""
     cd.COMMAND_SET.clear()
     cd._load_function.cache_clear()
+    cd._wanted_params.cache_clear()
     cd._MODULE_CACHE.clear()
     yield
     cd.COMMAND_SET.clear()
     cd._load_function.cache_clear()
+    cd._wanted_params.cache_clear()
     cd._MODULE_CACHE.clear()
 
 
@@ -35,6 +37,22 @@ def install_commands():
         cd.COMMAND_SET.update(cd._parse_sheet([HEADER, *rows]))
 
     return _install
+
+
+@pytest.fixture
+def dispatch_function(monkeypatch, install_commands):
+    """把一個本地函式當成指令集裡的 function 型指令來派發。
+
+    刻意走完整的 dispatch_command → _handle_entry → _invoke 路徑，
+    參數注入的行為才和線上一致；直接呼叫 _invoke 驗不到分詞那一段。
+    """
+
+    def _run(func, user_input: str, **context):
+        install_commands([["!測試", "function", "本地測試函式"]])
+        monkeypatch.setattr(cd, "_load_function", lambda qualname: func)
+        return dispatch_command(user_input, **context)
+
+    return _run
 
 
 # ===== 基本派發 =====
@@ -239,3 +257,71 @@ def test_parse_sheet_skips_header_and_incomplete_rows():
         "!英雄": ("text", "英雄榜"),
         "!空白": ("text", "有空白"),
     }
+
+
+# ===== 參數注入（P2-25）=====
+#
+# 過去 _invoke 的註解寫「只挑函式簽章允收的名字」，但那個 dict comprehension
+# 沒有做任何過濾——所有 context 一律硬塞。只要指令函式不是 **kwargs 就會 TypeError。
+
+
+async def test_a_function_only_receives_what_it_asks_for(dispatch_function):
+    seen = {}
+
+    async def only_wants_char(*, char):
+        seen["kwargs"] = {"char": char}
+        return "ok"
+
+    reply = await dispatch_function(only_wants_char, "!測試", char="角色", message="訊息")
+
+    assert reply == "ok"  # 沒宣告 message，不該被硬塞而 TypeError
+    assert seen["kwargs"] == {"char": "角色"}
+
+
+async def test_a_kwargs_function_still_receives_everything(dispatch_function):
+    """現有 19 個指令函式都是這個形狀，行為必須完全不變。"""
+    seen = {}
+
+    async def old_style(*args, **kwargs):
+        seen.update(kwargs)
+        seen["_args"] = args
+        return "ok"
+
+    await dispatch_function(old_style, "!測試 甲 乙", char="角色", message="訊息")
+
+    assert seen["char"] == "角色"
+    assert seen["message"] == "訊息"
+    assert seen["raw_tail_text"] == "甲 乙"
+    assert seen["_args"] == ("甲", "乙")
+
+
+async def test_a_function_without_var_positional_gets_no_tokens(dispatch_function):
+    """沒寫 *args 的函式不該被塞位置參數，否則一有參數就 TypeError。"""
+
+    async def keyword_only(*, raw_tail_text):
+        return f"收到：{raw_tail_text}"
+
+    reply = await dispatch_function(keyword_only, "!測試 甲 乙", char="角色")
+
+    assert reply == "收到：甲 乙"
+
+
+async def test_a_function_taking_nothing_is_still_callable(dispatch_function):
+    async def takes_nothing():
+        return "ok"
+
+    assert await dispatch_function(takes_nothing, "!測試 甲") == "ok"
+
+
+async def test_signature_inspection_is_cached(dispatch_function):
+    """每一則指令訊息都會走到這裡，簽章不該重複解析。"""
+
+    async def handler(*, char):
+        return "ok"
+
+    cd._wanted_params.cache_clear()
+    for _ in range(5):
+        await dispatch_function(handler, "!測試", char="角色")
+
+    assert cd._wanted_params.cache_info().misses == 1
+    assert cd._wanted_params.cache_info().hits == 4

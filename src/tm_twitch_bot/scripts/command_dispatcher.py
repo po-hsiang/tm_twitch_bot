@@ -47,17 +47,65 @@ GENERIC_ERROR_REPLY = "⚠️ 這個指令暫時出了點問題，稍後再試�
 # ===== 共用呼叫橋樑 =====
 
 
-async def _invoke(func, tail: list[str], raw_tail_text: str, context: dict):
-    accepted_kw = {
-        # 只挑函式簽章允收的名字，避免多餘 kwargs
-        name: value
-        for name, value in {
-            "raw_tail_text": raw_tail_text,
-            **context,
-        }.items()
-    }
+@lru_cache(maxsize=256)
+def _wanted_params(func) -> tuple[frozenset[str] | None, bool]:
+    """看一次函式簽章，回傳 (願收的關鍵字名稱, 是否收位置參數)。
+
+    關鍵字那一項為 None 代表它有 `**kwargs`，照舊全部給。
+    簽章拿不到（C 實作的內建函式之類）時也回 None，保守維持舊行為。
+
+    用 lru_cache 是因為每一則觸發指令的訊息都會走到這裡，
+    而同一個函式的簽章不會變。
+    """
     try:
-        result = func(*tail, **accepted_kw)
+        params = inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return None, True
+
+    takes_var_positional = any(
+        p.kind is inspect.Parameter.VAR_POSITIONAL for p in params.values()
+    )
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return None, takes_var_positional
+
+    names = frozenset(
+        name
+        for name, p in params.items()
+        if p.kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    )
+    return names, takes_var_positional
+
+
+async def _invoke(func, tail: list[str], raw_tail_text: str, context: dict):
+    """把指令函式要的東西餵給它。
+
+    這裡是「按參數名注入」：指令函式想要什麼就在簽章上寫什麼，
+    沒寫的不會拿到。這讓新指令可以寫成明確的
+    `async def foo(*, char, raw_tail_text)`，而不必再一律 `**kwargs`
+    然後用 `kwargs.get("char")` 摸黑拿（拿錯名字會安靜地拿到 None）。
+
+    現有 19 個指令函式全是 `*args, **kwargs`，在這個規則下行為完全不變，
+    所以不需要一次性改寫它們。
+
+    註：CODE_REVIEW P2-25 原本建議定義一個 CommandContext 型別。
+    改用「按參數名注入」是刻意的取捨——它同樣讓函式的需求變明確、
+    可標註型別，卻不必多一層物件包裝，也不必動到 19 個線上指令函式
+    （那些只有開台時才會被真正執行到，改壞了測試不一定攔得住）。
+    """
+    available = {"raw_tail_text": raw_tail_text, **context}
+    wanted, takes_var_positional = _wanted_params(func)
+    accepted_kw = (
+        available
+        if wanted is None
+        else {name: value for name, value in available.items() if name in wanted}
+    )
+    # 只有明確收 *args 的函式才拿得到訊息切出來的位置參數。
+    # 目前沒有任何指令函式真的用它（都是從 raw_tail_text 取），
+    # 但照給才不會讓既有的 `*args, **kwargs` 簽章行為改變。
+    args = tuple(tail) if takes_var_positional else ()
+    try:
+        result = func(*args, **accepted_kw)
         if inspect.isawaitable(result):  # 指令函數已全面 async 化，同步函數也相容
             result = await result
         return result
