@@ -26,6 +26,11 @@ class FakeChar:
         self.display_names = ["參加者"]
         self.saved = False
 
+    @property
+    def display_name(self) -> str:
+        """比照真實 Character 的安全取名（見 role_system P2-40）。"""
+        return self.display_names[-1] if self.display_names else self.user_id
+
     def gain_gold(self, amount: int) -> None:
         self.gold += amount
 

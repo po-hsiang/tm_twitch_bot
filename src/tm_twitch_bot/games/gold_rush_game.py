@@ -108,7 +108,7 @@ class GoldRushGame(metaclass=_SingletonMeta):
         original_gold = char.gold
         char.gain_gold(total_reward)
         await char.save()
-        winner = char.display_names[-1]
+        winner = char.display_name
         final_result = (
             f"@{winner} 🎊 恭喜您抱走一桶金 {total_reward} Gold！"
             f"原本 {original_gold} 現在 {char.gold} 🎊"

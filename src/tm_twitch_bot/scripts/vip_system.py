@@ -98,8 +98,8 @@ class VipSystem(metaclass=_SingletonMeta):
             return "⚠️ VIP 兌換服務還在暖機，請稍等一下再試 tigerm24Love"
 
         user_id = getattr(char, "user_id", None)
-        display_name = char.display_names[-1]
-        username = char.usernames[-1]
+        display_name = char.display_name
+        username = char.username
 
         async with self._redeem_lock:
             today_iso = self._today_iso()

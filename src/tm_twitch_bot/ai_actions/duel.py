@@ -28,6 +28,9 @@ system_prompt = """
 {"winner":"小虎", "battle_log":"阿喵攻勢猛烈，又是重拳又是旋風踢 🐾，但小虎速度更勝一籌，使用影分身閃過最後一記重踢，回身來個暗器致勝！"}
 """
 
+# 給觀眾看的制式訊息。細節一律只進 log（同 CODE_REVIEW P1-11 的原則）。
+FAILURE_REPLY = "⚠️ 對戰旁白剛剛卡住了，稍後再試一次 tigerm24Cry"
+
 schema = {
     "type": "object",
     "properties": {
@@ -59,7 +62,9 @@ async def pk(*args, **kwargs) -> str:
         return "⚠️ 您不能和自己 PK"
 
     duel_info = "\n".join([format_for_duel(challenger), format_for_duel(opponent)])
-    result = await get_duel_result(duel_info)
+    result = await get_duel_result(
+        duel_info, (challenger.display_name, opponent.display_name)
+    )
     logger.info(f"對戰資訊:\n{duel_info}\n對戰結果: {result}")
     return result
 
@@ -67,17 +72,62 @@ async def pk(*args, **kwargs) -> str:
 def format_for_duel(char: Character) -> str:
     attr_str = " / ".join(f"{k} {v}" for k, v in char.attributes.items())
     return (
-        f"{char.display_names[-1]} | "
+        f"{char.display_name} | "
         f"Lv. {char.level} | 職業【{char.job}】| {attr_str}"
     )
 
 
-async def get_duel_result(duel_info: str) -> str:
+def _resolve_winner(raw, valid_names: tuple[str, ...]) -> str | None:
+    """把模型回的勝者名字對回真正的參戰者，對不上就回 None。
+
+    這一步不能省：`winner` 是模型自由生成的字串，而回覆會加上 `@`
+    直接進公開聊天室——模型幻想出一個名字，Bot 就會去 @ 一個
+    根本沒參戰的人（甚至是不存在的帳號）。
+
+    先試完全相符，再試去空白／忽略大小寫（模型偶爾會多個空格或改大小寫，
+    那是格式問題不是幻想，不該因此判定失敗），都對不上才放棄。
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    candidate = raw.strip().lstrip("@").strip()
+    for name in valid_names:
+        if candidate == name:
+            return name
+    for name in valid_names:
+        if candidate.casefold() == name.strip().casefold():
+            return name  # 回傳我們自己的名字，不是模型給的版本
+    return None
+
+
+async def get_duel_result(duel_info: str, valid_names: tuple[str, ...]) -> str:
+    """取得對戰結果。
+
+    模型的輸出一律當成不可信：即使有 JSON Schema，`structured_output`
+    仍可能因為微服務錯誤或模型不配合而回傳缺欄位、非 dict 的東西。
+    原本直接 `.get()` 再內插，拿不到就會送出字面的
+    「None 勝利者為: @None」到聊天室。
+    """
     content_json = await openai_client.structured_output(
         system_prompt, duel_info, schema
     )
-    winner = content_json.get("winner")
+    if not isinstance(content_json, dict):
+        logger.error(f"對戰結果格式非預期（非 dict）：{content_json!r}")
+        return FAILURE_REPLY
+
     battle_log = content_json.get("battle_log")
+    if not isinstance(battle_log, str) or not battle_log.strip():
+        logger.error(f"對戰結果缺少可用的 battle_log：{content_json!r}")
+        return FAILURE_REPLY
+    battle_log = battle_log.strip()
+
+    winner = _resolve_winner(content_json.get("winner"), valid_names)
+    if winner is None:
+        # 旁白本身還是有娛樂價值，但不能宣告一個對不上的勝者
+        logger.error(
+            f"對戰結果的 winner 不是參戰者之一，已省略勝者宣告："
+            f"{content_json.get('winner')!r}，參戰者={valid_names}"
+        )
+        return battle_log
     return f"{battle_log} 勝利者為: @{winner}"
 
 
@@ -91,7 +141,9 @@ if __name__ == "__main__":
             print("⚠️ 您不能和自己 PK")
             return
         duel_info = "\n".join([format_for_duel(challenger), format_for_duel(opponent)])
-        result = await get_duel_result(duel_info)
+        result = await get_duel_result(
+            duel_info, (challenger.display_name, opponent.display_name)
+        )
         logger.info(f"對戰資訊:\n{duel_info}\n對戰結果: {result}")
 
     asyncio.run(_demo())

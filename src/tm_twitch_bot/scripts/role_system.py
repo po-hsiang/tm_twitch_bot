@@ -54,6 +54,32 @@ class Character:
     # ---------- 髒資料追蹤 ----------
 
     @property
+    def display_name(self) -> str:
+        """給觀眾看的名稱，保證取得到。
+
+        直接寫 `display_names[-1]` 會對舊文件炸 IndexError：
+        `from_dict` 用的是 `doc.get("display_names", [])`，而
+        `find_by_name()` 與 `find_by_user_id()` 這兩條路是直接撈文件、
+        **不補名字**的（只有 `get_or_create()` 會補）。
+        所以 `!pk` 對上一份缺這個欄位的舊文件就會整個指令掛掉。
+        依序退回 usernames、user_id——名字醜一點都比炸掉好。
+        """
+        if self.display_names:
+            return self.display_names[-1]
+        if self.usernames:
+            return self.usernames[-1]
+        return self.user_id
+
+    @property
+    def username(self) -> str:
+        """登入帳號名，同樣保證取得到（理由見 display_name）。"""
+        if self.usernames:
+            return self.usernames[-1]
+        if self.display_names:
+            return self.display_names[-1]
+        return self.user_id
+
+    @property
     def is_dirty(self) -> bool:
         """自上次存檔以來是否有異動。"""
         return self._dirty
@@ -276,7 +302,7 @@ class Character:
         self.attributes[rand_attr] += 1
         self._dirty = True
         await send_func(
-            f"恭喜 @{self.display_names[-1]} 升到 {self.level} 等，提升 {rand_attr} 1 點！"
+            f"恭喜 @{self.display_name} 升到 {self.level} 等，提升 {rand_attr} 1 點！"
         )
         await self._maybe_job_change(send_func)
 
@@ -289,7 +315,7 @@ class Character:
         self.job = new_job
         self._dirty = True
         await send_func(
-            f"恭喜 @{self.display_names[-1]} 從【{old_job}】{cfg['stage']}為【{self.job}】！"
+            f"恭喜 @{self.display_name} 從【{old_job}】{cfg['stage']}為【{self.job}】！"
         )
 
     def get_info(self):

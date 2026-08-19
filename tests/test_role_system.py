@@ -203,3 +203,57 @@ def test_from_dict_fills_defaults_for_missing_fields():
     assert restored.job == "初學者"
     assert restored.usernames == []
     assert set(restored.attributes) == {"STR", "AGI", "VIT", "INT", "DEX", "LUK"}
+
+
+# ===== 安全取名（P2-40）=====
+#
+# 直接寫 display_names[-1] 會對舊文件炸 IndexError：from_dict 用的是
+# doc.get("display_names", [])，而 find_by_name / find_by_user_id 這兩條路
+# 是直接撈文件、不補名字的（只有 get_or_create 會補）。
+
+
+def test_display_name_uses_the_latest_name():
+    char = Character(user_id="u1", usernames=["tester"], display_names=["舊名", "新名"])
+
+    assert char.display_name == "新名"
+    assert char.username == "tester"
+
+
+def test_display_name_falls_back_to_username():
+    """舊文件可能只有 usernames。名字醜一點都比整個指令炸掉好。"""
+    char = Character(user_id="u1", usernames=["tester"], display_names=[])
+
+    assert char.display_name == "tester"
+
+
+def test_names_fall_back_all_the_way_to_the_user_id():
+    char = Character(user_id="u1", usernames=[], display_names=[])
+
+    assert char.display_name == "u1"
+    assert char.username == "u1"
+
+
+async def test_a_legacy_document_without_names_does_not_crash_on_level_up(
+    collect_sends,
+):
+    """升級與轉職的廣播都會用到名字，是最容易踩到 IndexError 的地方。"""
+    level_and_job_system.JOB_CONFIG.update({2: {"stage": "轉職", "jobs": ["劍士"]}})
+    send, sent = collect_sends
+    char = Character.from_dict({"user_id": "u1", "level": 1, "exp": 0})
+    assert char.display_names == []  # 前提：這份舊文件真的沒有名字
+
+    await char.gain_exp(EXP_MULTIPLE, send)  # 升級 + 轉職，兩則廣播
+
+    assert len(sent) == 2
+    assert all("u1" in message for message in sent)  # 退回 user_id，沒有炸掉
+
+
+def test_the_name_properties_are_not_persisted():
+    """它們是 property 而不是 dataclass field，不能被寫進文件。"""
+    char = Character(user_id="u1", usernames=["tester"], display_names=["名字"])
+
+    doc = char.to_dict()
+
+    assert "display_name" not in doc
+    assert "username" not in doc
+    assert doc["display_names"] == ["名字"]
