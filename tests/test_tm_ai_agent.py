@@ -1,8 +1,8 @@
 """n8n「TM AI Agent」webhook 串接。
 
 n8n 端不屬於本專案，Bot 這側負責三件事：把欄位送齊、同頻道排隊、
-任何失敗都只給觀眾一句道歉語。n8n 現在會偵測 twitch: 前綴並回純文字單行，
-所以回覆處理只留下換行與長度兩道 Twitch 協定層的防線。
+任何失敗都只給觀眾一句道歉語。回覆不做任何後處理——換行與長度那兩道
+Twitch 協定防線在 utils/chat_sender.py，對應的測試在 test_chat_sender.py。
 這裡全部離線驗證，不會真的打到 webhook。
 """
 
@@ -209,79 +209,6 @@ async def test_missing_secret_does_not_call_the_webhook(webhook, monkeypatch):
     assert calls == []
 
 
-# ===== 回覆整形 =====
-#
-# n8n 端會偵測 twitch: 前綴，回覆保證是純文字單行、500 字元以內，
-# 所以這裡只驗兩件事：該原樣通過的原樣通過，
-# 以及兩道協定防線（換行、長度）在保證失效時仍然守得住。
-
-
-@pytest.mark.parametrize(
-    "raw",
-    [
-        "安安好虎粉 🐯 tigerm24Love",
-        "答案是 12 * 34 = 408",
-        "欄位叫 snake_case_name 喔",
-        "圖表在這 https://quickchart.io/chart/render/zf-b0d974e6-a05b",
-        "https://quickchart.io/chart?c={type:'bar',data:{labels:['a_b','c_d']}}&bkg=white",
-    ],
-    ids=["emoji-emote", "calculator", "identifier", "chart-url", "url-underscores"],
-)
-def test_plain_text_passes_through_untouched(raw):
-    """n8n 給的已經是純文字，這裡不該再自作聰明去動它。
-
-    列出來的每一項都是舊版剝 Markdown 時真的會弄壞的字串
-    （`*` 與 `_` 被當成語法），拿掉那套之後正好變成迴歸保護。
-    """
-    assert agent.clean_reply(raw) == raw
-
-
-def test_newlines_become_a_visible_separator():
-    """IRC 以換行作為一則訊息的結尾，混進 \\n 會讓後半段變成另一行協定內容。
-
-    n8n 保證不會有換行，但這是協定層的安全問題而不是排版問題，
-    保證失效的代價太大，所以這道防線刻意留著。
-    """
-    cleaned = agent.clean_reply("1. 熱搜A\n2. 熱搜B\n3. 熱搜C")
-
-    assert "\n" not in cleaned
-    assert cleaned == "1. 熱搜A / 2. 熱搜B / 3. 熱搜C"
-
-
-@pytest.mark.parametrize("break_char", ["\n", "\r\n", "\r"], ids=["lf", "crlf", "cr"])
-def test_a_lone_carriage_return_is_flattened_too(break_char):
-    """split("\\n") 會漏掉單獨的 \\r，而 IRC 對 \\r 一樣敏感。"""
-    cleaned = agent.clean_reply(f"前段{break_char}後段")
-
-    assert cleaned == "前段 / 後段"
-
-
-def test_blank_lines_do_not_produce_empty_segments():
-    cleaned = agent.clean_reply("第一段\n\n\n第二段")
-
-    assert cleaned == "第一段 / 第二段"
-
-
-def test_over_length_reply_is_truncated_with_room_for_the_name_prefix():
-    cleaned = agent.clean_reply("字" * 900)
-
-    assert len(cleaned) == agent.MAX_REPLY_LENGTH
-    assert cleaned.endswith(agent.TRUNCATE_SUFFIX)
-    assert agent.MAX_REPLY_LENGTH < 500
-
-
-def test_a_reply_at_n8n_max_still_fits_after_the_longest_prefix():
-    """n8n 的上限剛好等於 Twitch 的上限，中間卻夾了一個前綴——這就是缺口。
-
-    前綴是 message_controller 加的「@顯示名稱 」，n8n 不知道有這回事。
-    Twitch 對超長訊息是整則丟掉而不是截斷，所以「剛好 500」等於整則消失。
-    顯示名稱上限 25 字元，加上 @ 與空格共 27。
-    """
-    cleaned = agent.clean_reply("字" * 500)
-    longest_prefix = "@" + "x" * 25 + " "
-
-    assert len(longest_prefix + cleaned) <= 500
-
 
 # ===== 同頻道排隊 =====
 
@@ -378,10 +305,15 @@ async def test_queue_slot_is_released_after_a_failure(webhook, monkeypatch):
 # ===== 成功路徑 =====
 
 
-async def test_successful_reply_is_returned_cleaned(webhook):
+async def test_reply_is_returned_verbatim(webhook):
+    """這一層刻意不動回覆。
+
+    n8n 保證純文字單行，而換行與長度的兜底在 chat_sender——
+    在這裡多做一份只會變成兩個地方要維護同一件事。
+    """
     respond, _ = webhook
-    respond(FakeResponse(json_data={"reply": "安安好虎粉\n今天過得好嗎 🐯"}))
+    respond(FakeResponse(json_data={"reply": "安安好虎粉 今天過得好嗎 🐯"}))
 
     result = await agent.ask(raw_tail_text="你好", message=FakeMessage())
 
-    assert result == "安安好虎粉 / 今天過得好嗎 🐯"
+    assert result == "安安好虎粉 今天過得好嗎 🐯"

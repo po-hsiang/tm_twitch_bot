@@ -2,11 +2,14 @@
 
 人設（虎喵小粉絲）、對話記憶（同 channel_id 共享最近 10 輪）與工具呼叫
 （台灣熱搜／網路搜尋／維基／計算機／統計圖表／虎喵歌單）全都在 n8n 端，
-這裡完全不管 prompt 也不存歷史。只負責三件事：
+這裡完全不管 prompt 也不存歷史。只負責兩件事：
 
   1. 把 Twitch 的欄位湊齊送出（見 svc_client/n8n_ai_agent.py）
   2. 同一頻道排隊送，避免共享記憶交錯
-  3. 上聊天室前的最後兩道協定防線（見下方 clean_reply）
+
+回覆不做任何後處理。n8n 端會偵測 channel_id 的 twitch: 前綴，
+保證回純文字單行；而換行與長度這兩道 Twitch 協定防線本來就該由
+唯一的出站瓶頸 utils/chat_sender.py 負責，每個指令各做一份只會漏。
 
 原本的 OpenAI 微服務路徑（ai_actions/gpt_chat_session.py）刻意保留不動，
 兩條路可以並存，要切換只需要改 Google Sheets 指令集的「內容」欄。
@@ -22,13 +25,6 @@ import asyncio
 
 DEFAULT_CHANNEL = config["twitch"]["channel"]
 
-# Twitch 單則上限 500 字元。n8n 端保證回覆 ≤500，但那個保證管不到
-# message_controller 會加上的「@顯示名稱 」前綴——剛好 500 字元的合法回覆
-# 加上前綴就超標，而超標的訊息 Twitch 是整則丟掉、不是截斷。
-MAX_REPLY_LENGTH = 450
-TRUNCATE_SUFFIX = "…"
-LINE_SEPARATOR = " / "
-
 # 同一頻道最多讓幾則排隊。再多就直接請他等一下 ——
 # 每則最壞要等 120 秒，讓隊伍無上限成長只會讓所有人都等到懷疑人生。
 MAX_WAITING_PER_CHANNEL = 2
@@ -36,38 +32,6 @@ MAX_WAITING_PER_CHANNEL = 2
 NO_QUESTION_REPLY = "請於空格後加上您想問的話喔 tigerm24Love"
 FAILURE_REPLY = "嗚嗚我剛剛恍神了一下，等等再問我一次好不好 tigerm24Cry"
 BUSY_REPLY = "我還在想上一個問題，等我一下喔 tigerm24Love"
-
-
-# ===== 回覆整形 =====
-#
-# n8n 端會偵測 channel_id 的 twitch: 前綴，回覆保證是純文字單行、500 字元以內，
-# 所以原本剝 Discord Markdown 的那一整套（五條 regex ＋ 網址暫存）已經拿掉了。
-# 那套東西不只是多餘，還會傷到正確的回覆：`12 * 34` 會被當成斜體、
-# quickchart 網址裡的 `_` 也是，得靠額外的邊界判斷去補，留著反而是風險。
-#
-# 只留下兩道防線，因為它們是 Twitch 協定層的限制，而 n8n 的保證管不到：
-#
-#   1. 換行——IRC 以換行作為一則訊息的結尾，字串裡混進 \n 不只是排版難看，
-#      而是會讓後半段被當成另一行協定內容送出去。
-#   2. 長度——上限算的是「含前綴的整則」，而前綴是 message_controller 加的，
-#      n8n 不知道有這回事（理由見 MAX_REPLY_LENGTH）。
-
-
-def clean_reply(reply: str) -> str:
-    """把回覆整形成 Twitch 貼得出去的單行文字。
-
-    Emoji 與網址都刻意原樣保留：前者是人設的一部分，
-    後者是 AI 畫統計圖時回的 quickchart 圖片連結。
-
-    用 splitlines() 而不是 split("\\n")：IRC 真正在意的是 \\r 與 \\n，
-    而 split("\\n") 會漏掉單獨出現的 \\r，splitlines() 兩個都收。
-    """
-    lines = [line.strip() for line in reply.splitlines()]
-    text = LINE_SEPARATOR.join(line for line in lines if line).strip()
-
-    if len(text) > MAX_REPLY_LENGTH:
-        text = text[: MAX_REPLY_LENGTH - len(TRUNCATE_SUFFIX)] + TRUNCATE_SUFFIX
-    return text
 
 
 # ===== 同頻道排隊 =====
@@ -128,12 +92,8 @@ async def _ask_serialized(
         # 不能進公開聊天室（同 CODE_REVIEW P1-11 的原則）。
         return FAILURE_REPLY
 
-    cleaned = clean_reply(reply)
-    if not cleaned:
-        logger.error(f"[TM AI Agent] 回覆清洗後變成空字串，原文：{reply!r}")
-        return FAILURE_REPLY
-    logger.info(f"[TM AI Agent] 回覆：{cleaned}")
-    return cleaned
+    logger.info(f"[TM AI Agent] 回覆：{reply}")
+    return reply
 
 
 # ===== 指令集入口 =====

@@ -56,6 +56,63 @@ def recorder():
     return _send, sent
 
 
+# ===== 換行 =====
+#
+# IRC 以換行作為一則訊息的結尾，而 twitchio 的 check_content 只驗長度。
+# 混進 \n 的話後半段會被當成另一行協定內容，觀眾只看到前半段就沒了。
+
+
+async def test_multiline_message_is_flattened_to_one_line(sender, recorder):
+    send, sent = recorder
+
+    await sender.send(send, "第一行\n第二行\n第三行")
+
+    assert sent == ["第一行 / 第二行 / 第三行"]
+    assert "\n" not in sent[0]
+
+
+@pytest.mark.parametrize("break_char", ["\n", "\r\n", "\r"], ids=["lf", "crlf", "cr"])
+async def test_a_lone_carriage_return_is_flattened_too(sender, recorder, break_char):
+    """split("\\n") 會漏掉單獨的 \\r，而 IRC 對 \\r 一樣敏感。"""
+    send, sent = recorder
+
+    await sender.send(send, f"前段{break_char}後段")
+
+    assert sent == ["前段 / 後段"]
+
+
+async def test_blank_lines_do_not_produce_empty_segments(sender, recorder):
+    send, sent = recorder
+
+    await sender.send(send, "第一段\n\n\n第二段")
+
+    assert sent == ["第一段 / 第二段"]
+
+
+async def test_a_message_of_only_newlines_is_never_sent(sender, recorder):
+    """整平後變成空字串，送空的 PRIVMSG 沒有意義。"""
+    send, sent = recorder
+
+    assert await sender.send(send, "\n\n  \n") is False
+    assert sent == []
+
+
+async def test_flatten_happens_before_truncation(sender, recorder):
+    """分隔符會佔字數，先截再整平就可能又超過上限。"""
+    send, sent = recorder
+    # 每行 200 字元共 3 行，整平後 600 + 分隔符，一定要截到 500
+    await sender.send(send, "\n".join(["字" * 200] * 3))
+
+    assert len(sent[0]) == cs.MAX_MESSAGE_LENGTH
+    assert "\n" not in sent[0]
+
+
+def test_flatten_leaves_single_line_content_untouched():
+    """絕大多數訊息本來就是單行，不該被動到。"""
+    for text in ["大家沒事多喝水", "答案是 12 * 34 = 408", "https://a.com/b_c"]:
+        assert cs.flatten(text) == text
+
+
 # ===== 長度 =====
 
 

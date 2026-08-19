@@ -50,9 +50,15 @@ class GuessNumberGame(metaclass=_SingletonMeta):
         self.answer = random.randint(1, self.DEFAULT_MAX - 1)
         self.prize_pool = 0
         self.guess_counter = 0
-        return f"""
-🎮 終極密碼開始！隨機產生數字於：{self.low} ~ {self.high}，
-輸入『 !猜 <數字> 』每次猜測費 {self.GUESS_FEE}，沒猜中灌注 {self.PRIZE_INC_PER_GUESS} 進彩金池"""
+        # 刻意寫成單行：這則訊息會直接進 Twitch IRC，而 IRC 以換行作為
+        # 一則訊息的結尾。原本是三引號多行字串，實際送出時後兩行會被當成
+        # 另一行協定內容，觀眾只看得到「@某人」後面空空的（chat_sender 現在
+        # 會兜住，但訊息本身就該是單行，不該依賴那道防線）。
+        return (
+            f"🎮 終極密碼開始！隨機產生數字於：{self.low} ~ {self.high}，"
+            f"輸入『 !猜 <數字> 』每次猜測費 {self.GUESS_FEE}，"
+            f"沒猜中灌注 {self.PRIZE_INC_PER_GUESS} 進彩金池"
+        )
 
     def guess(self, char: Character, raw_number: str) -> str:
         if not self._active:

@@ -1,4 +1,8 @@
-"""統一的發話出口：長度截斷 + 速率保護。
+"""統一的發話出口：換行整平 + 長度截斷 + 速率保護。
+
+全專案只有這裡會真的碰到 `channel.send`，所以「每一則出站訊息都適用的
+Twitch 協定限制」通通擺在這一層。放在各個指令函式裡的話，
+每寫一個新指令就要重新想一次，而且漏掉的那次沒有任何東西會攔住。
 
 Twitch 對一般帳號的限制是「30 秒 20 則」，超過會被伺服器靜音約 30 分鐘——
 這是少數「錯一次整場開台都毀了」的地方，所以參數刻意抓得比官方上限保守。
@@ -6,6 +10,11 @@ Twitch 對一般帳號的限制是「30 秒 20 則」，超過會被伺服器靜
 
 單則訊息另有 500 字元上限，超過時 Twitch 是「整則丟掉」而不是截斷，
 所以寧可自己先截，至少觀眾看得到前半段。
+
+換行則是更硬的限制：IRC 以換行作為一則訊息的結尾，而 twitchio 的
+`Messageable.send` 是把內容原樣內插進 `PRIVMSG ... :{content}\\r\\n`，
+它的 `check_content` 只驗長度、不驗換行。所以字串裡的 \\n 會讓後半段
+被當成另一行協定內容送出去——觀眾只看到前半段，其餘靜默消失。
 
 為什麼是「呼叫端等待」而不是背景佇列：
   - 送出時機與呼叫端一致，訊息順序與測試行為都好預測
@@ -25,9 +34,21 @@ SendFunc = Callable[[str], Awaitable[None]]
 
 MAX_MESSAGE_LENGTH = 500  # Twitch 單則訊息上限
 TRUNCATE_SUFFIX = "…"
+LINE_SEPARATOR = " / "  # 換行的替代品。用看得出來的符號，不然多行會黏成一團
 RATE_LIMIT = 18  # 官方上限 20，留 2 則餘裕給手動發言或 twitchio 內部訊息
 WINDOW_SECONDS = 30.0
 MAX_WAITING = 20  # 同時排隊等發話的訊息上限，超過就直接丟棄
+
+
+def flatten(content: str) -> str:
+    """把多行訊息壓成單行，換行改成看得見的分隔符。
+
+    用 splitlines() 而不是 split("\\n")：IRC 對 \\r 與 \\n 一樣敏感，
+    而 split("\\n") 會漏掉單獨出現的 \\r。
+    連續空行只算一個分隔，行首行尾的空白一併清掉。
+    """
+    lines = [line.strip() for line in content.splitlines()]
+    return LINE_SEPARATOR.join(line for line in lines if line)
 
 
 def truncate(content: str) -> str:
@@ -67,7 +88,10 @@ class ChatSender:
         send_func 由呼叫端提供（`channel.send`），不在這裡綁定：
         重連後 Channel 物件會換新，抓著舊物件會靜默失效。
         """
+        # 先整形再做各項檢查，後面每一步看到的都是「真正會送出去的字串」
+        content = truncate(flatten(content))
         if not content:
+            # 只有空白與換行的訊息整平後會變成空字串，送空的 PRIVMSG 沒有意義
             return False
 
         if self._waiting >= self._max_waiting:
@@ -79,7 +103,6 @@ class ChatSender:
             )
             return False
 
-        content = truncate(content)
         self._waiting += 1
         try:
             # 上鎖是為了「一次只有一則在等額度」，順帶保證送出順序與呼叫順序一致
