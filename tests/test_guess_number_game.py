@@ -3,6 +3,8 @@
 這個遊戲會直接動玩家的金幣，卻長期沒有任何測試覆蓋。
 """
 
+import asyncio
+
 import pytest
 
 from tm_twitch_bot.games import guess_number_game as gn
@@ -13,6 +15,11 @@ class FakeChar:
         self.user_id = user_id
         self.gold = gold
         self.display_names = ["玩家"]
+
+    @property
+    def display_name(self) -> str:
+        """比照真實 Character 的安全取名（見 role_system P2-40）。"""
+        return self.display_names[-1] if self.display_names else self.user_id
 
     def gain_gold(self, amount: int) -> None:
         self.gold += amount
@@ -253,3 +260,93 @@ def test_the_admin_can_start_a_round(monkeypatch):
 
     assert "終極密碼開始" in reply
     assert gn.guess_number_game._active is True
+
+
+# ===== 流局倒數（P2-42）=====
+#
+# 沒有這個機制的話 _active 只會在「有人猜中」時歸零，
+# 沒人猜中就整場開台都開不了新局，只能重啟 Bot。
+
+
+def test_the_timeout_is_thirty_minutes():
+    assert gn.GuessNumberGame.TIMEOUT_SECONDS == 30 * 60
+
+
+async def test_a_round_nobody_wins_is_announced_and_released(fresh_game, collect_sends):
+    send, sent = collect_sends
+    fresh_game.start(send, timeout=0)
+    fresh_game.answer = 777
+    fresh_game.prize_pool = 12
+
+    for _ in range(3):  # call_later(0) 要讓事件圈轉一圈才會排入
+        await asyncio.sleep(0)
+    await fresh_game._end_task
+
+    assert fresh_game._active is False  # 名額釋放，可以開新的一局
+    assert len(sent) == 1
+    assert "時間到" in sent[0]
+    assert "777" in sent[0]  # 答案要公布
+    assert "12" in sent[0]  # 彩金池流局金額
+
+
+async def test_a_new_round_can_start_after_a_timeout(fresh_game, collect_sends):
+    send, _ = collect_sends
+    fresh_game.start(send, timeout=0)
+    for _ in range(3):
+        await asyncio.sleep(0)
+    await fresh_game._end_task
+
+    assert "終極密碼開始" in fresh_game.start(send, timeout=0)
+
+
+async def test_winning_cancels_the_timeout(fresh_game, collect_sends):
+    """猜中之後倒數不該再響，否則會對一個已結束的局公告流局。"""
+    send, sent = collect_sends
+    fresh_game.start(send, timeout=0)
+    fresh_game.answer = 500
+
+    fresh_game.guess(FakeChar(), "500")
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    assert fresh_game._timeout_handle is None
+    assert not any("時間到" in m for m in sent)
+
+
+async def test_a_stale_timeout_does_not_end_a_new_round(fresh_game, collect_sends):
+    """上一局的殘留倒數不能把正在進行的新局判成流局。
+
+    猜中時會取消倒數，但 call_later 的取消與 task 排入之間仍有空隙，
+    所以另外用 round_id 把關。
+    """
+    send, sent = collect_sends
+    fresh_game.start(send, timeout=999)
+    stale_round = fresh_game._round_id
+    fresh_game.answer = 500
+    fresh_game.guess(FakeChar(), "500")  # 第一局結束
+    fresh_game.start(send, timeout=999)  # 第二局開始
+
+    fresh_game._schedule_timeout(send, stale_round)  # 硬叫上一局的回呼
+    await fresh_game._end_task
+
+    assert fresh_game._active is True  # 新的一局還活著
+    assert not any("時間到" in m for m in sent)
+
+
+def test_no_send_func_means_no_countdown(fresh_game):
+    """送不出公告時就不掛倒數——掛了也只是靜默結束一局。"""
+    fresh_game.start()
+
+    assert fresh_game._timeout_handle is None
+    assert fresh_game._active is True  # 遊戲照常能玩
+
+
+async def test_the_timeout_announcement_is_a_single_line(fresh_game, collect_sends):
+    """同 P1-38：直接進 IRC 的訊息不能有換行。"""
+    send, sent = collect_sends
+    fresh_game.start(send, timeout=0)
+    for _ in range(3):
+        await asyncio.sleep(0)
+    await fresh_game._end_task
+
+    assert "\n" not in sent[0]

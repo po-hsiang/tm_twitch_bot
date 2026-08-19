@@ -11,6 +11,15 @@ import random
 
 AsyncFunc = Callable[..., Awaitable[None]] | Callable[..., None]
 
+# 排程間隔與遊戲時長。抽成常數而不是散在呼叫處的裸數字，
+# 營運要調整時只有這一區要看。
+WATER_INTERVAL = 1800  # 定期喝水：30 分鐘
+RANDOM_GAME_INTERVAL = 2700  # 隨機開一場小遊戲：45 分鐘
+DAY_CHANGE_TIME = "23:59"  # 換日提醒
+GOLD_RUSH_DURATION = 180  # 排程開的一桶金倒數：3 分鐘
+# 終極密碼的流局倒數在 GuessNumberGame.TIMEOUT_SECONDS（30 分鐘），
+# 因為那是遊戲自己的規則，管理員手動開局時也要生效。
+
 
 @dataclass
 class JobHandler:
@@ -175,17 +184,17 @@ def schedule_task(send_func) -> TaskScheduler:
 
     # 定期喝水
     task_scheduler.add_interval_job(
-        water, seconds=1200, kwargs={"send_func": send_func}
+        water, seconds=WATER_INTERVAL, kwargs={"send_func": send_func}
     )
 
     # 開啟隨機遊戲
     task_scheduler.add_interval_job(
-        random_game, seconds=1800, kwargs={"send_func": send_func}
+        random_game, seconds=RANDOM_GAME_INTERVAL, kwargs={"send_func": send_func}
     )
 
     # 提醒換日
     task_scheduler.add_daily_job(
-        day_change, time_str="23:59", kwargs={"send_func": send_func}
+        day_change, time_str=DAY_CHANGE_TIME, kwargs={"send_func": send_func}
     )
 
     return task_scheduler
@@ -202,11 +211,18 @@ async def day_change(*args, **kwargs):
 
 
 async def random_game(*args, **kwargs):
+    """隨機開一場小遊戲。
+
+    兩個遊戲都要收下 send_func：它們的結算／流局公告是倒數結束後才送出的，
+    那時已經沒有任何呼叫端在等回傳值（見 P1-15、P2-42）。
+
+    用明確的啟動器，而不是原本靠 `__self__.__class__.__name__` 反射判斷
+    是哪個遊戲再分支——那種寫法只要類別改名，兩個分支就都不成立，
+    排程會靜靜地什麼都不做，而且不會有任何錯誤。
+    """
     send_func = kwargs.get("send_func")
-    games = [guess_number_game.start, gold_rush_game.start]
-    game_start_func = random.choice(games)
-    game_name = game_start_func.__self__.__class__.__name__
-    if game_name == "GuessNumberGame":
-        await send_func(game_start_func())
-    elif game_name == "GoldRushGame":
-        await send_func(game_start_func(send_func, 120))
+    starters = (
+        lambda: guess_number_game.start(send_func),
+        lambda: gold_rush_game.start(send_func, GOLD_RUSH_DURATION),
+    )
+    await send_func(random.choice(starters)())
