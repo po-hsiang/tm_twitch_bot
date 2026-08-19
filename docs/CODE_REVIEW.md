@@ -67,7 +67,7 @@
 | P1-14 | 沒有 Twitch 訊息速率與長度保護 | ✅ `b452cd9` 🧪 |
 | P1-15 | 一桶金的錯誤訊息永遠送不出去 | ✅ `3daa235` 🧪 |
 | P1-13 | 沒有 graceful shutdown | ✅ `2830418` 🧪 |
-| P3-32 | 沒有部署設定 | ⏸️ 大部分為誤判，重寫如下 |
+| P3-32 | 沒有部署設定 | ⏸️ 大部分為誤判（殘留項目於第八輪補完） |
 | P1-37 | Google Sheets 服務沒開就啟動失敗 | 🔲 本輪查證時新發現 |
 
 測試總數 149 項，全部離線，執行時間 0.6 秒。
@@ -112,6 +112,8 @@
 | P2-21 | `_SingletonMeta` 被複製了 8 份 | 🔲 降為 7 份（少了一個檔案，本身未解） |
 | — | AI 問答收斂為單一路徑（移除 OpenAI 微服務的聊天路徑） | ✅ 🧪 |
 | — | `OPENAI_API_KEY` 從必填降為選填 | ✅ 🧪 |
+| P3-32 | 服務清單與一鍵啟動（殘留項目） | ✅ `docs/SERVICES.md`、`tools/start_services.ps1` |
+| — | 刪除 `gpt_chat_sessions` collection | ✅ 已備份後 drop |
 
 `ai_actions/gpt_chat_session.py` 移除，`svc_client/openai.py` 瘦身為只保留
 `structured_output()`——**`!pk` 是它唯一的呼叫端**，那個指令需要模型回傳
@@ -124,7 +126,7 @@
 測試總數 **303 項**，覆蓋率 **72%**（少了 61 個敘述句要維護）。
 覆蓋率細節見 [附錄 B](#附錄-b測試覆蓋率現況)。
 
-剩餘 8 項待處理（另加 P3-32 殘留的服務清單文件），內容如下。
+剩餘 8 項待處理，內容如下。
 
 ---
 
@@ -663,7 +665,7 @@ CI 已加上 lint 步驟——`compileall` 只保證「編得過」。
 
 > 未宣告依賴一併補上：`utils/dump_obj_utils.py` 真的 `import attr`，但 `attrs` 過去只靠 twitchAPI 的傳遞依賴才裝得到。已宣告進 `dependencies`（attrs 早就在 `uv.lock` 裡，宣告只是把既有事實寫明，不增加安裝成本）。那個模組目前零呼叫端，見 P2-28。
 
-### P3-32 ⏸️ 沒有部署設定 —— **原判斷大部分是誤判**
+### P3-32 ✅ 沒有部署設定 —— **原判斷大部分是誤判，殘留項目已於第八輪補完**
 
 原本寫的是「四個微服務的啟動方式完全沒有被記錄，建議補 `Dockerfile` / `compose.yaml`」。
 
@@ -672,19 +674,40 @@ CI 已加上 lint 步驟——`compileall` 只保證「編得過」。
 
 也一併確認頻道主的另一個說法是對的：微服務的網址並沒有寫死在程式裡，四個都讀 `config_common.yaml` 的 `svc_url`，換 port 或搬到別的網段只要改設定檔。
 
-扣掉誤判之後，真正還缺的只剩兩件，而且都不嚴重：
+扣掉誤判之後，真正還缺的只剩兩件，而且都不嚴重——**兩件都已於第八輪補上**：
 
-| 缺什麼 | 嚴重度 | 成本 |
-| --- | --- | --- |
-| **這個 repo 裡沒有那四個服務的線索** | 低 | 15 分鐘 |
-| **沒有一鍵啟動** | 低（純方便性） | 30 分鐘 |
+| 缺什麼 | 狀態 |
+| --- | --- |
+| 這個 repo 裡沒有那四個服務的線索 | ✅ [`docs/SERVICES.md`](./SERVICES.md) |
+| 沒有一鍵啟動 | ✅ `tools/start_services.ps1` |
 
-第一項：`config_common.yaml` 裡只有 `http://localhost:9091` ~ `9094`，
-沒有服務名稱、沒有 repo 位置、沒有「這一個負責什麼」。容器設定確實存在，但**不在這裡**，
-換機器時仍然要靠記憶找出那四個專案資料夾。補一份 `docs/SERVICES.md`（名稱／port／repo 位置／一行職責／啟動指令）就結案。
+[`docs/SERVICES.md`](./SERVICES.md) 記的是實機核對的結果（`docker compose ls` 加各 repo 的實際內容），不是憑印象寫的：五個服務的 port／container 名稱／專案位置／compose 檔名、各自開了哪些端點以及 **Bot 實際只用到哪幾個**、設定與憑證放在哪、掛掉時的實際影響，還有 Swagger 位置（四個都在 `/docs/index.html`）。
 
-第二項：四份 compose 分散在四個資料夾，開台前等於要開四個終端機。
-可以在本 repo 放一份 compose 用 `include:` 引用那四份（Compose v2.20+），或一支五行的 `start.ps1`。這是方便性，不是風險。
+`tools/start_services.ps1` 啟動四個服務並確認真的在聽（打 Swagger 頁而不是根路徑——根路徑一律回 404），`-Check` 只檢查不啟動。n8n 刻意不含在內：它是多客戶端共用的服務，生命週期跟這個 Bot 無關。
+
+> 註：`.ps1` 存成 UTF-8 **with BOM**。Windows PowerShell 5.1 預設以 ANSI（cp950）讀 `.ps1`，沒有 BOM 的話中文註解會變亂碼並直接炸掉解析——第一版就踩到了。
+
+## 查證過程中發現的三件事
+
+**1. 四個微服務都沒有版本控管（新發現，且比原本這一項嚴重）**
+
+`google-sheets-svc`、`openai-svc`、`mongo-atlas-svc`、`youtube-svc` 與 n8n 的 `C:\Dev\Docker\n8n` **都不是 git repo**（2026-08-20 核對）。所以：
+
+- 改壞一個 handler 沒有任何辦法還原，也看不出改了什麼
+- 資料夾誤刪或機器壞掉，四個服務的原始碼就沒了——而 Bot 有四分之一的功能綁在上面
+- Google 服務帳戶憑證、OpenAI API key、Atlas 連線字串都只有那台機器上的單一副本
+
+建議各建一個 private repo，**但第一次 commit 之前要先寫好 `.gitignore`**：那幾個資料夾裡有憑證檔與含密鑰的 `config/config.yaml`，直接 `git add -A` 會把機敏資訊寫進歷史，而歷史很難乾淨移除。
+
+這件事在本 repo 之外，只能記錄與建議。
+
+**2. `openai-svc` 的 restart 政策和其他三個不同**
+
+它是 `on-failure:5`（失敗 5 次後放棄並保持停止），其他三個是 `unless-stopped`。也就是說它可能已經放棄了而「看起來服務都開著」，而且不會有任何通知。啟動腳本在偵測到它掛掉時會特別提醒這件事。
+
+**3. `mongo-atlas-svc` 沒有任何刪除端點**
+
+只有 insert_one / insert_many / find / update / create_index。清理資料無法透過服務完成——第八輪要刪 `gpt_chat_sessions` 時就是直接連 Atlas 處理的。這是刻意的保守設計（Bot 端沒有能力刪任何東西），值得記下來而不是視為缺陷。
 
 > **但查證過程中發現一個真正的問題**，而且正好推翻「微服務掛掉不該影響主體」這個前提——見 P1-37。
 
@@ -781,11 +804,12 @@ await level_and_job_system.load_job_config()  # → 9091
 
 第七輪之後的建議順序：
 
-1. **P3-32**（服務清單）——15 分鐘的文件工作：**現在只需要記三個**（9091 Sheets、9093 MongoDB、9094 YouTube）加上 9092 只服務 `!pk` 的說明
-2. **P2-26**（指令集熱重載）——改了 Google Sheets 就得重啟，與「試算表當 CMS」的初衷相違。注意 `_load_function` 的 `lru_cache` 要一併 `cache_clear()`
-3. **P2-21、P2-22、P2-28、P2-29**——`_SingletonMeta` 重複七份、config 無 schema 驗證、死碼去留、表頭處理不一致
-4. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
-5. **P3-34、P3-36**——OAuth 工具殘留（含 `state` 的 CSRF 缺口）、硬編碼的指令集網址
+1. **P2-26**（指令集熱重載）——改了 Google Sheets 就得重啟，與「試算表當 CMS」的初衷相違。注意 `_load_function` 的 `lru_cache` 要一併 `cache_clear()`
+2. **P2-21、P2-22、P2-28、P2-29**——`_SingletonMeta` 重複七份、config 無 schema 驗證、死碼去留、表頭處理不一致
+3. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
+4. **P3-34、P3-36**——OAuth 工具殘留（含 `state` 的 CSRF 缺口）、硬編碼的指令集網址
+
+> **本 repo 之外但最該做的一件事**：四個微服務都沒有版本控管（見 P3-32 的查證發現）。以「壞掉的代價」來排，這件事比上面任何一項都嚴重。
 
 > 第八輪之後**已經沒有「有真邏輯卻零覆蓋」的模組**（原本唯一的那支 `gpt_chat_session.py` 隨 AI 路徑收斂一併移除），所以補測試不再是第一順位。
 

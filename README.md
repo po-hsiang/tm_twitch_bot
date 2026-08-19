@@ -9,6 +9,7 @@
 | 文件 | 內容 |
 |---|---|
 | [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) | 程式碼健檢報告：缺陷清單、優先序與處置狀態 |
+| [`docs/SERVICES.md`](docs/SERVICES.md) | 外部服務清單：port／container／專案位置／端點／掛掉時的影響 |
 | [`docs/project_report.html`](docs/project_report.html) | 互動式專案報告：架構圖、訊息流程圖、指令總表 |
 
 ---
@@ -97,6 +98,12 @@
    本機 9091~9094（各自容器化，獨立部署）          自架 n8n，經 ngrok 對外
 ```
 
+四個微服務的 container 名稱、專案位置、各自開了哪些端點、掛掉時的實際影響，都記在 [`docs/SERVICES.md`](docs/SERVICES.md)。開台前想確認它們都活著：
+
+```powershell
+.\tools\start_services.ps1 -Check
+```
+
 - **twitchio**（2.x）：負責 IRC 聊天訊息的收發。
 - **twitchAPI**（4.x）：負責 EventSub WebSocket（忠誠點數兌換）與 Helix API（VIP 授予/移除）。
 - **oauth/server.py**：FastAPI 撰寫的 OAuth callback 伺服器（port 8096），用於首次取得 access / refresh token。
@@ -117,7 +124,10 @@ tm_twitch_bot/
 ├── logs/                       # 執行期日誌（輪替，不進版控）
 ├── docs/
 │   ├── CODE_REVIEW.md          # 程式碼健檢報告（缺陷清單與處置狀態）
+│   ├── SERVICES.md             # 外部服務清單（port／專案位置／端點／影響範圍）
 │   └── project_report.html     # 互動式專案報告（架構圖／流程圖／指令表）
+├── tools/
+│   └── start_services.ps1      # 啟動四個本機微服務並檢查是否真的活著
 ├── src/tm_twitch_bot/
 │   ├── main.py                 # 進入點：Token 驗證/刷新、bootstrap、Bot 啟動
 │   ├── config/

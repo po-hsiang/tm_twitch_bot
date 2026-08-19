@@ -951,6 +951,12 @@
       </p>
       <p class="ops-note">
         四個微服務現在都符合「掛掉不影響主體」的原則了。
+        完整清單（container 名稱、專案位置、各自開了哪些端點、Bot 實際用到哪幾個）見
+        <code>docs/SERVICES.md</code>；<code>tools\start_services.ps1 -Check</code> 可以一次確認四個是否都活著。
+        <br><br>
+        補這份清單時發現一件本 repo 之外、但比清單本身嚴重得多的事：
+        <strong class="hl">四個微服務與 n8n 的設定資料夾都沒有版本控管</strong>——
+        改壞了無法還原，資料夾誤刪原始碼就沒了，而憑證與密鑰也只有那台機器上的單一副本。
       </p>
     </div>
 
