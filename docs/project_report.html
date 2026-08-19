@@ -537,7 +537,7 @@
         <li><span class="k">外部服務依賴</span><span class="v">本機 4 個（:9091~:9094）+ n8n AI Agent</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">254 項（全部離線，覆蓋率 66%）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">294 項（全部離線，覆蓋率 70%）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -1010,7 +1010,7 @@
             <tr><td class="cmd">!英雄</td><td>等級排行榜 Top 3</td><td class="mod">rank_system.top_heroes</td></tr>
             <tr><td class="cmd">!富翁</td><td>財富排行榜 Top 3</td><td class="mod">rank_system.top_richest</td></tr>
             <tr><td class="cmd">!抽</td><td>20 Gold 十連抽</td><td class="mod">gacha_handler.gacha</td></tr>
-            <tr><td class="cmd">!猜 &lt;數字&gt;</td><td>終極密碼猜數字</td><td class="mod">guess_number_game.guess</td></tr>
+            <tr><td class="cmd">!猜 &lt;數字&gt;</td><td>終極密碼猜數字（30 分鐘沒人猜中自動流局）</td><td class="mod">guess_number_game.guess</td></tr>
             <tr><td class="cmd">!投 &lt;金額&gt;</td><td>一桶金投注</td><td class="mod">gold_rush_game.toss</td></tr>
             <tr><td class="cmd">!gpt &lt;問題&gt;</td><td>與 AI 聊天（虎喵粉絲人設）</td><td class="mod">gpt_chat_session.ask</td></tr>
             <tr><td class="cmd">!pk @對象</td><td>AI 旁白 RPG 對戰</td><td class="mod">duel.pk</td></tr>
@@ -1035,7 +1035,7 @@
       <p>
         依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
         <br>
-        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-19，第七輪後）：共 21 項，12 項已修正、3 項部分處理。此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；第七輪另有 5 項新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42）僅記錄在該文件。</span>
+        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-19，第七輪後）：共 21 項，12 項已修正、3 項部分處理。此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；第七輪另有 5 項新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42）僅記錄在該文件，皆已修正。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
       </p>
     </div>

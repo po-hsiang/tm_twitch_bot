@@ -40,7 +40,7 @@
 ### 🎰 小遊戲（games / gacha_handler）
 | 遊戲 | 說明 |
 |---|---|
-| 終極密碼（guess_number_game） | 猜 0~1000 之間的數字，每次猜測收費並灌注彩金池，越早猜中基礎獎金越高 |
+| 終極密碼（guess_number_game） | 猜 0~1000 之間的數字，每次猜測收費並灌注彩金池，越早猜中基礎獎金越高；30 分鐘沒人猜中就公布答案並流局 |
 | 一桶金（gold_rush_game） | 限時投注，每人上限 10 Gold，結束後依投入比例加權抽出得主獨得全池 |
 | 抽卡（gacha_handler） | 20 Gold 十連抽，抽中稀有表情符號可獲得對應 Gold 回饋 |
 
@@ -57,7 +57,8 @@
 - 名額上限 51 人；到期後由過期掃描（sweep）移除 VIP 並更新資料庫紀錄。
 
 ### ⏰ 排程任務（task_scheduler）
-- 每 20 分鐘提醒喝水、每 30 分鐘隨機開啟一場小遊戲、每日 23:59 換日提醒。
+- 每 30 分鐘提醒喝水、每 45 分鐘隨機開啟一場小遊戲、每日 23:59 換日提醒。
+- 間隔與遊戲時長集中在 `task_scheduler.py` 開頭的具名常數（`WATER_INTERVAL`、`RANDOM_GAME_INTERVAL`、`GOLD_RUSH_DURATION`），營運要調整只有那一區要看。
 - 通用的 `TaskScheduler` 支援 interval / daily 兩種任務型態，可註冊多個函數隨機執行其一。
 
 ### 💬 聊天品質控管（message_controller）
@@ -182,6 +183,7 @@ tm_twitch_bot/
     ├── test_guess_number_game.py
     ├── test_gacha_handler.py
     ├── test_token_manager.py
+    ├── test_duel.py
     └── test_log_utils.py
 ```
 
@@ -353,9 +355,9 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 uv run pytest
 ```
 
-目前 254 項測試，約 0.4 秒跑完，整體覆蓋率 66%（`uv run pytest --cov`）。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
+目前 294 項測試，約 0.4 秒跑完，整體覆蓋率 70%（`uv run pytest --cov`）。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、同頻道排隊、七種失敗模式）、`guess_number_game` 與 `gacha_handler`（金幣邊界與設定表健檢）、`token_manager`（token 寫回順序）。
+覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、同頻道排隊、七種失敗模式）、`guess_number_game` 與 `gacha_handler`（金幣邊界與設定表健檢）、`token_manager`（token 寫回順序）、`duel`（模型輸出驗證與勝者比對）。
 
 覆蓋率的分層解讀（哪些該補、哪些刻意不補）見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 附錄 B。
 

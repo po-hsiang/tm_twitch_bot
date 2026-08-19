@@ -97,15 +97,15 @@
 | P2-25 | `_invoke` 的參數過濾是假的 | ✅ `4829f0b` 🧪（換了做法，見該項） |
 | P1-17 | `vip_system` 的 API context 未初始化 | ✅ `9b37b05` 🧪 |
 | P1-18 | `.env` 的 token 寫回不是原子操作 | ✅ `9b37b05` 🧪 **原判斷有誤，已更正** |
-| P2-40 | `display_names[-1]` 對舊文件會 IndexError | 🔲 本輪新發現 |
-| P2-41 | `duel.py` 未驗證模型輸出 | 🔲 本輪新發現 |
-| P2-42 | 終極密碼開了之後無法取消 | 🔲 本輪新發現 |
+| P2-40 | `display_names[-1]` 對舊文件會 IndexError | ✅ `044792c` 🧪 |
+| P2-41 | `duel.py` 未驗證模型輸出 | ✅ `044792c` 🧪 |
+| P2-42 | 終極密碼開了之後無法取消 | ✅ `79059c3` 🧪 |
 | P3-34 | OAuth callback 沒驗 `state` | 🔲 仍待處理，但缺口已在程式碼中明確註明 |
 
-測試總數 **254 項**，全部離線，執行時間 0.4 秒；整體覆蓋率 **66%**。
+測試總數 **294 項**，全部離線，執行時間 0.4 秒；整體覆蓋率 **70%**。
 覆蓋率細節見 [附錄 B](#附錄-b測試覆蓋率現況)。
 
-剩餘 12 項待處理（另加 P3-32 殘留的服務清單文件），內容如下。
+剩餘 9 項待處理（另加 P3-32 殘留的服務清單文件），內容如下。
 
 ---
 
@@ -567,19 +567,21 @@ twitchio 的 `Messageable.send` 是把內容原樣內插進 `PRIVMSG #頻道 :{c
 
 ---
 
-### P2-40 🔲 `display_names[-1]` 對舊文件會 IndexError（第七輪新發現）
+### P2-40 ✅🧪 `display_names[-1]` 對舊文件會 IndexError（第七輪新發現）
 
-`scripts/role_system.py:279,292` · `ai_actions/duel.py:74`
+`scripts/role_system.py` · `ai_actions/duel.py` · `games/gold_rush_game.py` · `scripts/vip_system.py`
 
-`from_dict` 用 `doc.get("display_names", [])`，所以文件缺這個欄位時會拿到空 list，而三處 `display_names[-1]` 都會 `IndexError`。
+`from_dict` 用 `doc.get("display_names", [])`，所以文件缺這個欄位時會拿到空 list，而**六處** `display_names[-1]` / `usernames[-1]` 都會 `IndexError`（原本只數到三處）。
 
-正常流程不會踩到（`get_or_create` 會補名字），但 `find_by_name()` 是直接撈文件、不補名字的——`!pk` 對上一份沒有 `display_names` 的舊文件就會炸。
+正常流程不會踩到（`get_or_create` 會補名字），但 `find_by_name()` 與 `find_by_user_id()` 是直接撈文件、不補名字的——`!pk` 對上一份沒有 `display_names` 的舊文件就會整個指令掛掉。
 
-建議：`from_dict` 保證至少有一個名字，或改用 `display_names[-1] if display_names else username`。
+**已修正**（`044792c`）：新增 `Character.display_name` / `Character.username` 兩個 property，依序退回 display_names → usernames → user_id，六處呼叫端全部改用。名字醜一點都比整個指令炸掉好。
 
-### P2-41 🔲 `duel.py` 未驗證模型輸出（第七輪新發現）
+它們是 property 而不是 dataclass field，所以 `asdict()` 不會把它們寫進文件——測試有把這點釘住。
 
-`ai_actions/duel.py:78-81`
+### P2-41 ✅🧪 `duel.py` 未驗證模型輸出（第七輪新發現）
+
+`ai_actions/duel.py`
 
 ```python
 winner = content_json.get("winner")
@@ -587,21 +589,32 @@ battle_log = content_json.get("battle_log")
 return f"{battle_log} 勝利者為: @{winner}"
 ```
 
-兩個 `.get()` 拿不到就回傳字面的 `"None 勝利者為: @None"`。而且 `@{winner}` 是模型自由生成的字串——它幻想出一個名字，Bot 就會去 @ 一個無關的人。
+兩個 `.get()` 拿不到就回傳字面的 `"None 勝利者為: @None"`。而且 `@{winner}` 是模型自由生成的字串——它幻想出一個名字，Bot 就會去 @ 一個無關的人（甚至是不存在的帳號）。
 
-建議：兩者缺一就回制式訊息；`winner` 必須是這兩位參戰者之一，否則不加 `@`。
+**已修正**（`044792c`）：
+
+- `battle_log` 缺或空一律回制式訊息（`FAILURE_REPLY`），細節只進 log
+- `winner` 必須對回兩位參戰者之一；對不上就**只回旁白、省略勝者宣告**——旁白本身還有娛樂價值，但不能宣告一個對不上的勝者
+- 名字比對先試完全相符，再試去空白／去 `@`／忽略大小寫。模型偶爾會多個空格或改大小寫，那是格式問題不是幻想，不該因此判定失敗；對上之後回傳的是**我們自己的**名字版本，不是模型給的
 
 > 換行那一項已由 P1-38 的 `chat_sender` 兜住，此處不再需要各自處理。
 
-### P2-42 🔲 終極密碼開了之後無法取消（第七輪新發現）
+### P2-42 ✅🧪 終極密碼開了之後無法取消（第七輪新發現）
 
 `games/guess_number_game.py`
 
 `_active` 只會在**猜中**時變回 `False`。沒人猜中的話這局永遠開著，而 `start()` 會回「⚠️ 終極密碼進行中」——也就是**整場開台都無法再開一局**，只能重啟 Bot。
 
-一桶金有倒數計時會自動結束，終極密碼沒有。
+**已修正**（`79059c3`）：採「逾時自動流局」，`TIMEOUT_SECONDS = 1800`（30 分鐘，頻道主指定）。時間到公告答案與流局的彩金池金額，並釋放名額。
 
-建議二選一：加一個管理員專用的取消指令，或比照一桶金加上逾時自動結算（後者要一併決定彩金池怎麼處理）。這需要營運端一起決定，因此列為待處理而非直接改。
+彩金池選擇**流局**而非滾入下一局：`start()` 本來就會把 `prize_pool` 歸零，改成滾存會動到已有測試覆蓋的金流行為。要改成滾存不難。
+
+實作上有兩處刻意的防護：
+
+1. 猜中時 `_cancel_timeout()`——否則倒數會對一個已結束的局公告流局
+2. 每局一個 `_round_id`，`_timeout_round` 會比對——`call_later` 的取消與 task 排入之間仍有空隙，光靠取消不夠保險，少了這道檢查就可能把正在進行的新局誤判成流局
+
+> 同一批順帶修掉 `random_game` 的反射脆弱性：原本用 `game_start_func.__self__.__class__.__name__` 判斷是哪個遊戲再分支，類別一改名兩個分支就都不成立，**排程會靜靜地什麼都不做且不留任何 log**。改成明確的啟動器 tuple。這是寫測試時才浮出來的。
 
 ---
 
@@ -745,13 +758,12 @@ await level_and_job_system.load_job_config()  # → 9091
 
 第七輪之後的建議順序：
 
-1. **P2-42**（終極密碼無法取消）——唯一「開台當下就會卡住一個功能」的項目，但需要營運端一起決定取消方式（管理員指令 vs 逾時自動結算）
-2. **P2-40、P2-41**——`display_names[-1]` 的 IndexError 與 `duel.py` 未驗證模型輸出，兩項都在 `!pk` 這條路上，一起做最省事
-3. **`duel.py` / `gpt_chat_session.py` 補測試**——目前覆蓋率 0%，而這兩支是唯二「有真邏輯卻零覆蓋」的模組（見附錄 B）
-4. **P3-32**（服務清單）——15 分鐘的文件工作：四個微服務的名稱／port／repo 位置／啟動指令
-5. **P2-26 ~ P2-29**——指令集熱重載、`_SingletonMeta` 重複八份、GPT session 共用上下文、表頭處理不一致
-6. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
-7. **P3-34、P3-36**——OAuth 工具殘留、硬編碼的指令集網址
+1. **`gpt_chat_session.py` 補測試**——覆蓋率仍是 0%，是**唯一**「有真邏輯卻零覆蓋」的模組（`duel.py` 已隨 P2-41 補到 65%）。P2-27 記的共用上下文問題就在這支裡，補測試與修那一項可以一起做
+2. **P3-32**（服務清單）——15 分鐘的文件工作：四個微服務的名稱／port／repo 位置／啟動指令
+3. **P2-26**（指令集熱重載）——改了 Google Sheets 就得重啟，與「試算表當 CMS」的初衷相違。注意 `_load_function` 的 `lru_cache` 要一併 `cache_clear()`
+4. **P2-21、P2-22、P2-28、P2-29**——`_SingletonMeta` 重複八份、config 無 schema 驗證、死碼去留、表頭處理不一致
+5. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
+6. **P3-34、P3-36**——OAuth 工具殘留（含 `state` 的 CSRF 缺口）、硬編碼的指令集網址
 
 > 目前唯一還「知道有問題但沒解」的是 P2-23 的並行扣款：兩個流程同時扣款仍可能把 `gold` 扣成負數。
 > 要解需要微服務端支援條件式更新並回傳 `matched_count`，那是微服務那邊的工程。
@@ -909,7 +921,7 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 
 # 附錄 B｜測試覆蓋率現況
 
-`uv run pytest --cov` — **254 項測試，整體 66%**（1720 敘述句中 588 未覆蓋）。
+`uv run pytest --cov` — **294 項測試，整體 70%**（1798 敘述句中 542 未覆蓋）。
 `if __name__ == "__main__":` 的手動試跑區塊與 `tttest.py` 不列入計算，那些不是產品路徑。
 
 ## 依風險分層
@@ -917,10 +929,10 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 | 層級 | 模組 | 覆蓋率 |
 | --- | --- | --- |
 | **完全覆蓋**（歷次修過的高風險模組） | `chat_sender`、`tm_ai_agent`、`n8n_ai_agent`、`gacha_handler`、`error_utils` | 100% |
-| **高** | `log_utils` 96%、`token_manager` 95%、`guess_number_game` 94%、`rank_system` 94%、`yaml_utils` 92%、`role_system` 91%、`message_controller` 91% | 88–96% |
-| **中** | `level_and_job_system` 88%、`http_utils` 86%、`greeter` 84%、`gold_rush_game` 83%、`vip_system` 82%、`command_dispatcher` 79% | 79–88% |
-| **偏低** | `mongo_atlas` 72%、`task_scheduler` 66%、`google_sheets` 65%、`main` 32%、`twitch_vips_api` 24% | 24–72% |
-| **零覆蓋** | `duel`、`gpt_chat_session`、`youtube`、`openai`、`call_timer`、`daily_food_picker`、`daily_meme_picker`、`dump_obj_utils` | 0% |
+| **高** | `log_utils` 96%、`token_manager` 95%、`guess_number_game` 93%、`rank_system` 94%、`yaml_utils` 92%、`role_system` 91%、`message_controller` 91% | 91–96% |
+| **中** | `level_and_job_system` 88%、`http_utils` 86%、`greeter` 84%、`gold_rush_game` 83%、`vip_system` 82%、`command_dispatcher` 79%、`task_scheduler` 79% | 79–88% |
+| **偏低** | `mongo_atlas` 72%、`duel` 65%、`google_sheets` 65%、`main` 32%、`twitch_vips_api` 24% | 24–72% |
+| **零覆蓋** | `gpt_chat_session`、`youtube`、`openai`、`call_timer`、`daily_food_picker`、`daily_meme_picker`、`dump_obj_utils` | 0% |
 
 ## 怎麼看這些數字
 
@@ -928,6 +940,8 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 
 **`main.py` 32% 是合理的**：未覆蓋的是 `event_ready`、`on_points`、token 同步這些相依 twitchio 內部結構的部分，要測得先造一整套假的 twitchio。已覆蓋的是真正有邏輯分支的 `shutdown()` 與 `load_sheet_config()`。
 
-**真正該補的只有兩支**：`duel.py` 與 `gpt_chat_session.py` 都是 0%，卻都有實質邏輯（前者組 prompt、解析結構化輸出、判定勝負；後者管上下文裁切）。P2-27 與 P2-41 記的問題都在這兩支裡。
+**`duel.py` 65%**：未覆蓋的是 `pk()` 的前置檢查（要造假的 Mongo 查詢）。真正的風險——模型輸出的驗證——已完全覆蓋（P2-41）。
+
+**真正還缺的只有 `gpt_chat_session.py`**：0% 且有實質邏輯（管上下文裁切）。P2-27 記的共用上下文與 `_pop_oldest_pair` 的 log／行為不符都在這支裡。
 
 **刻意沒在 CI 設覆蓋率門檻**：現在補測試的順序是照風險排的。設了門檻會變成「為了數字去補薄包裝」，把力氣花在錯的地方。
