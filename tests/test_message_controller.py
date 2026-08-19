@@ -4,6 +4,8 @@
 都不能讓玩家已經到手的經驗與金幣蒸發。
 """
 
+import logging
+
 import pytest
 
 from tm_twitch_bot.scripts import message_controller as mc
@@ -154,8 +156,14 @@ async def test_greeting_failure_does_not_abort_the_pipeline(fake_mongo, monkeypa
     assert saves_of(fake_mongo) == []
 
 
-async def test_no_exception_escapes_even_when_saving_fails(fake_mongo, monkeypatch):
-    """存檔本身失敗也只能記錄，不能往外拋——否則會蓋掉原本真正的錯誤。"""
+async def test_no_exception_escapes_even_when_saving_fails(
+    fake_mongo, monkeypatch, caplog
+):
+    """存檔本身失敗也只能記錄，不能往外拋——否則會蓋掉原本真正的錯誤。
+
+    「記錄」那一半一定要一起驗：只驗不拋例外的話，
+    把 except 改成默默 pass 也會通過，而那是最難查的失敗形式。
+    """
 
     async def failing_update(*args, **kwargs):
         raise RuntimeError("寫入失敗")
@@ -166,7 +174,10 @@ async def test_no_exception_escapes_even_when_saving_fails(fake_mongo, monkeypat
     monkeypatch.setattr(mongo_atlas_client, "update", failing_update)
     monkeypatch.setattr(mc, "dispatch_command", no_command)
 
-    await mc.handle_message(FakeMessage("安安"))  # 不應拋出例外
+    with caplog.at_level(logging.ERROR):
+        await mc.handle_message(FakeMessage("安安"))  # 不應拋出例外
+
+    assert "寫入失敗" in caplog.text
 
 
 # ===== 不必要的存檔要避免 =====

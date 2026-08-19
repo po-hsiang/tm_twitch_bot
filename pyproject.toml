@@ -58,5 +58,21 @@ ignore = ["E501"]
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.0",
     "ruff>=0.14",
 ]
+
+[tool.coverage.run]
+source = ["src/tm_twitch_bot"]
+omit = [
+    "*/tttest.py", # 手動試算稿，不是產品程式（見 CODE_REVIEW P2-28）
+]
+
+[tool.coverage.report]
+# 每個模組結尾的 `if __name__ == "__main__":` 手動試跑區塊不列入計算——
+# 那是開發時單獨跑某支腳本用的，不是產品路徑
+exclude_also = [
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = false

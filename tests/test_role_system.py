@@ -155,10 +155,10 @@ def test_name_append_marks_dirty_only_when_new(char):
     assert char.is_dirty is True
 
 
-def test_dirty_flag_is_never_written_to_the_database(char):
-    char.gain_gold(1)
-
-    assert "_dirty" not in char.to_dict()
+# 這裡原本有一項 test_dirty_flag_is_never_written_to_the_database，
+# 只驗 `_dirty` 沒被寫進文件。P2-23 之後多了一個同性質的 `_baseline`，
+# test_character_persistence.py 的 test_internal_bookkeeping_never_reaches_the_database
+# 兩個都驗，是嚴格的超集，因此這裡就不重複一份。
 
 
 async def test_save_clears_the_dirty_flag(char, monkeypatch):
