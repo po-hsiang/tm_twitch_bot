@@ -44,6 +44,9 @@ SIGNAL_POLL_SECONDS = 0.5
 SHEET_LOADERS = sheet_reloader.SHEET_LOADERS
 SHEET_RETRY_SECONDS = 300  # 降級啟動後多久重試一次
 
+# 上線公告會把指令集網址貼給觀眾。和 google_sheets_client 抓表用的是同一個值。
+COMMAND_SHEET_URL = config["google_sheets"]["sheet_url"]
+
 
 # ---------- 啟動設定 ----------
 async def load_sheet_config(names=None) -> list[str]:
@@ -224,9 +227,10 @@ class MyBot(commands.Bot):
 
         if not config["is_test"]:
             await self.send_to_channel("Bot 已上線 tigerm24ThruFast ")
-            await self.send_to_channel(
-                "指令集： https://docs.google.com/spreadsheets/d/1-UQ7KBWK09ZCHZKFycymk04BaB5oW6DJ0vi2N7x6qQE/edit?usp=sharing "
-            )
+            # 網址讀 config，不要再內嵌一份（CODE_REVIEW P3-36）：
+            # google_sheets_client 抓表用的是 config 那一份，公告用的是這裡這份，
+            # 換試算表時只改一邊，觀眾就會拿到指向舊表的連結而沒有任何錯誤。
+            await self.send_to_channel(f"指令集： {COMMAND_SHEET_URL} ")
         else:
             logger.info("【測試測試】Bot 已上線！")
 

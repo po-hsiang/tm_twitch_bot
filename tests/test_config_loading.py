@@ -10,6 +10,7 @@
 
 import copy
 import logging
+from pathlib import Path
 
 import pytest
 import yaml
@@ -263,3 +264,30 @@ def test_the_vip_section_is_read_strictly(monkeypatch):
 
     with pytest.raises(KeyError):
         vs._load_vip_config()
+
+
+# ===== 設定值不要在程式碼裡再抄一份（CODE_REVIEW P3-36）=====
+
+
+def test_no_python_file_hardcodes_the_command_sheet_url():
+    """上線公告原本內嵌了一份指令集網址。
+
+    抓表用的是 config 那一份、公告用的是程式碼那一份，換試算表時只改一邊，
+    觀眾就會拿到指向舊表的連結——而且不會有任何錯誤。
+
+    這條測試比「檢查公告內容」更有效：它擋的是「下次又有人貼一份網址進去」。
+    """
+    src_root = Path(yaml_utils.__file__).resolve().parents[1]
+    offenders = [
+        path.relative_to(src_root).as_posix()
+        for path in src_root.rglob("*.py")
+        if "docs.google.com" in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == [], f"這些檔案內嵌了試算表網址，請改讀 config：{offenders}"
+
+
+def test_the_announcement_url_comes_from_config():
+    from tm_twitch_bot import main
+
+    assert main.COMMAND_SHEET_URL == yaml_utils.config["google_sheets"]["sheet_url"]
