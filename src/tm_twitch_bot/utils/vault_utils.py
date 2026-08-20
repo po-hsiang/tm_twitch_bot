@@ -1,3 +1,7 @@
+# 這一整支是註解掉的舊碼（Vault 取密鑰），**刻意保留備忘、不是待清的死碼**。
+# 現行做法：機敏值走 .env（見 utils/yaml_utils.py），設定檔只留非機敏項目。
+# 見 CODE_REVIEW P2-28。
+
 # from tm_twitch_bot.utils.yaml_utils import config
 # import requests
 

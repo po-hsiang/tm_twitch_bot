@@ -193,12 +193,6 @@ class Character:
             return cls.from_dict(doc[0])
         return None
 
-    @classmethod
-    async def get_tigermeow_char(cls) -> "Character":
-        return await mongo_atlas_client.find(
-            "tm_twitch_users", filter={"user_id": config["tigermeowtw_id"]}, limit=1
-        )
-
     def _maybe_append_name(self, username: str, display_name: str):
         if username and username not in self.usernames:
             self.usernames.append(username)

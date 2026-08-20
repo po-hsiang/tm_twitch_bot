@@ -1,3 +1,7 @@
+# 這支檔案裡「活著」的只有下面那個 StatusCodeError。
+# 其餘註解掉的是 Telegram 通報的舊碼（部分來自另一個專案），
+# **刻意保留備忘、不是待清的死碼**。見 CODE_REVIEW P2-28。
+
 # from tm_twitch_bot.utils.vault_utils import project_secret
 # from tm_twitch_bot.utils.yaml_utils import config
 # from tm_twitch_bot.utils.log_utils import logger

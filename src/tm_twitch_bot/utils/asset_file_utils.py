@@ -1,3 +1,6 @@
+# 這一整支是註解掉的舊碼（從 Google Drive 下載素材），
+# **刻意保留備忘、不是待清的死碼**。見 CODE_REVIEW P2-28。
+
 # from utils.error_utils import notify
 # from pathlib import Path
 # import aiohttp

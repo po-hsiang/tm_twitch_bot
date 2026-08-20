@@ -23,7 +23,6 @@ class GoldRushGame(metaclass=_SingletonMeta):
     def __init__(self):
         self._active = False
         self._entries: dict[str, int] = {}
-        self._timer: threading.Timer | None = None
         self._end_task: asyncio.Task | None = None
         self.amount_max = 10
 

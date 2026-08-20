@@ -17,7 +17,7 @@ dependencies = [
     "python-dotenv",
     "attrs", # utils/dump_obj_utils.py 真的 import attr。過去只靠 twitchAPI 的
              # 傳遞依賴才裝得到，twitchAPI 哪天不用 attrs 就會壞。
-             # （那個模組目前零呼叫端，見 CODE_REVIEW P2-28，要不要留由頻道主決定）
+             # （那支是手動除錯工具，零呼叫端是刻意的，第九輪決定保留）
 ]
 
 [build-system]
@@ -36,9 +36,6 @@ addopts = "-q --strict-markers"
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-# tttest.py 是暫存的手動試算稿（見 CODE_REVIEW P2-28），不套 lint。
-# 不刪掉是因為那是頻道主的東西，去留由他決定。
-extend-exclude = ["src/tm_twitch_bot/tttest.py"]
 
 [tool.ruff.lint]
 # 刻意只開「會抓到真問題」的規則，不開會大規模改寫程式碼的那些：
@@ -64,9 +61,6 @@ dev = [
 
 [tool.coverage.run]
 source = ["src/tm_twitch_bot"]
-omit = [
-    "*/tttest.py", # 手動試算稿，不是產品程式（見 CODE_REVIEW P2-28）
-]
 
 [tool.coverage.report]
 # 每個模組結尾的 `if __name__ == "__main__":` 手動試跑區塊不列入計算——
