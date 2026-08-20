@@ -1,9 +1,12 @@
 """招呼語的惰性載入與降級行為。"""
 
+from datetime import datetime
+
 import pytest
 
 from tm_twitch_bot.scripts import greeter
 from tm_twitch_bot.scripts.greeter import greet_user
+from tm_twitch_bot.utils.time_utils import TW_TZ
 from tm_twitch_bot.utils.yaml_utils import config
 
 DIALOGUE_SHEET = {"冒險台詞": [["勇者出現了"]]}
@@ -77,3 +80,36 @@ async def test_falls_back_to_plain_greeting_when_sheets_is_down(monkeypatch):
     result = await greet_user("u1")
     assert result != ""
     assert "聽說" not in result
+
+
+# ===== 招呼語看的是台灣時間（CODE_REVIEW P3-35）=====
+
+
+@pytest.mark.parametrize(
+    "hour, expected",
+    [
+        (0, "這麼晚還沒睡"),
+        (5, "這麼晚還沒睡"),
+        (6, "早安"),
+        (11, "早安"),
+        (12, "午安"),
+        (17, "午安"),
+        (18, "晚上好"),
+        (23, "晚上好"),
+    ],
+)
+async def test_greeting_matches_the_hour(monkeypatch, sheet_stub, hour, expected):
+    """四個時段的邊界。順帶驗 greeter 真的走 now_tw——
+
+    原本這裡是 datetime.now(timezone(timedelta(hours=8)))，寫法正確但各寫一份；
+    收斂到 time_utils 之後，這個測試就是「招呼語沒有跟著改壞」的護欄。
+    """
+    get_sheet_data, _ = sheet_stub(DIALOGUE_SHEET)
+    monkeypatch.setattr(greeter.google_sheets_client, "get_sheet_data", get_sheet_data)
+    monkeypatch.setattr(
+        greeter, "now_tw", lambda: datetime(2026, 8, 21, hour, 30, tzinfo=TW_TZ)
+    )
+
+    result = await greet_user(f"u{hour}")
+
+    assert expected in result

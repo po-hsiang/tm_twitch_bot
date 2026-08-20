@@ -1,8 +1,8 @@
 from tm_twitch_bot.svc_client.google_sheets import google_sheets_client
 from tm_twitch_bot.utils.sheet_utils import collect_cells
+from tm_twitch_bot.utils.time_utils import now_tw
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
-from datetime import datetime, timezone, timedelta
 from typing import Optional
 import random
 
@@ -40,7 +40,7 @@ async def greet_user(user_id) -> Optional[str]:
 
     who_arrived.add(user_id)
 
-    hour = datetime.now(timezone(timedelta(hours=8))).hour  # 台灣時區
+    hour = now_tw().hour
 
     if 18 <= hour:
         greeting = "晚上好 tigerm24Hi"

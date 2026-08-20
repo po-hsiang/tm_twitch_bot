@@ -2,7 +2,7 @@ from tm_twitch_bot.svc_client.mongo_atlas import mongo_atlas_client
 from tm_twitch_bot.scripts.level_and_job_system import JOB_CONFIG
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
-from datetime import datetime, timezone, timedelta
+from tm_twitch_bot.utils.time_utils import now_tw_iso
 from dataclasses import dataclass, field, asdict
 import random
 import re
@@ -114,7 +114,7 @@ class Character:
 
     @staticmethod
     def _now_str() -> str:
-        return datetime.now(timezone(timedelta(hours=8))).isoformat()
+        return now_tw_iso()
 
     @classmethod
     async def load_or_create(
@@ -138,7 +138,7 @@ class Character:
         char = cls(user_id=user_id, usernames=[username], display_names=[display_name])
         doc = char.to_dict()
 
-        now = datetime.now(timezone(timedelta(hours=8))).isoformat()
+        now = now_tw_iso()
         doc.update({"created_at": now, "updated_at": now})
         await mongo_atlas_client.insert_one("tm_twitch_users", doc)
         return char

@@ -1,6 +1,7 @@
 from tm_twitch_bot.games.guess_number_game import guess_number_game
 from tm_twitch_bot.games.gold_rush_game import gold_rush_game
 from tm_twitch_bot.utils.log_utils import logger
+from tm_twitch_bot.utils.time_utils import now_tw
 from typing import Iterable, Callable, Awaitable, Any
 from dataclasses import dataclass
 from functools import partial
@@ -19,6 +20,23 @@ DAY_CHANGE_TIME = "23:59"  # 換日提醒
 GOLD_RUSH_DURATION = 180  # 排程開的一桶金倒數：3 分鐘
 # 終極密碼的流局倒數在 GuessNumberGame.TIMEOUT_SECONDS（30 分鐘），
 # 因為那是遊戲自己的規則，管理員手動開局時也要生效。
+
+
+def seconds_until(hour: int, minute: int, *, now: dt.datetime | None = None) -> float:
+    """距離下一次 hh:mm（**台灣時間**）還有幾秒；已經過了就算到明天。
+
+    原本這段內嵌在 _daily_worker 裡，用的是 naive 的 datetime.now()——
+    也就是本機時區。搬到 UTC 機器上，23:59 的換日提醒會在台灣的早上八點才響
+    （CODE_REVIEW P3-35）。
+
+    now 可以注入，測試才不必真的等到午夜。
+    固定偏移的時區讓 .replace(hour=...) 沒有 DST 邊界問題（見 time_utils）。
+    """
+    now = now or now_tw()
+    next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if next_run <= now:
+        next_run += dt.timedelta(days=1)
+    return (next_run - now).total_seconds()
 
 
 @dataclass
@@ -126,11 +144,7 @@ class TaskScheduler:
         name: str,
     ):
         while True:
-            now = dt.datetime.now()
-            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if next_run <= now:
-                next_run += dt.timedelta(days=1)
-            await asyncio.sleep((next_run - now).total_seconds())
+            await asyncio.sleep(seconds_until(hour, minute))
             await self._execute_safely(funcs, args, kwargs, name)
 
     async def _execute_safely(

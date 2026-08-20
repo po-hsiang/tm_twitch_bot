@@ -4,7 +4,8 @@ from tm_twitch_bot.scripts.role_system import Character
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
 from tm_twitch_bot.utils.singleton import SingletonMeta
-from datetime import date, datetime, timedelta
+from tm_twitch_bot.utils.time_utils import now_tw_iso, today_tw
+from datetime import timedelta
 from dataclasses import dataclass
 from typing import Optional
 import asyncio
@@ -56,7 +57,13 @@ class VipSystem(metaclass=SingletonMeta):
 
     @staticmethod
     def _today_iso() -> str:
-        return date.today().isoformat()
+        """台灣的今天（YYYY-MM-DD）。
+
+        到期日只存到「日」，而且是以字串比大小（$gte / $lt），所以回字串就好。
+        用台灣時間是因為 date.today() 在 UTC 機器上會是「昨天」——兌換當下
+        就少一天，過期掃描也會提早一天把人的 VIP 拔掉（CODE_REVIEW P3-35）。
+        """
+        return today_tw().isoformat()
 
     async def _get_vip_doc(self, user_id: str) -> Optional[dict]:
         docs = await mongo_atlas_client.find(
@@ -114,7 +121,7 @@ class VipSystem(metaclass=SingletonMeta):
 
             # 固定效期 31 天（僅存 YYYY-MM-DD）
             expire_iso = (
-                date.today() + timedelta(days=self.cfg.days_per_redeem)
+                today_tw() + timedelta(days=self.cfg.days_per_redeem)
             ).isoformat()
 
             # 透過 API 設定 VIP。
@@ -155,12 +162,12 @@ class VipSystem(metaclass=SingletonMeta):
                             "display_name": display_name,
                             "active": True,
                             "expire_date": expire_iso,  # YYYY-MM-DD
-                            "updated_at": datetime.now().isoformat(),
+                            "updated_at": now_tw_iso(),
                         },
                         "$inc": {"redeemed_count": 1},
                         "$push": {
                             "history": {
-                                "ts": datetime.now().isoformat(),
+                                "ts": now_tw_iso(),
                                 "op": "redeem",
                                 "days": self.cfg.days_per_redeem,
                                 "gold_cost": cost,
@@ -220,11 +227,11 @@ class VipSystem(metaclass=SingletonMeta):
                 update={
                     "$set": {
                         "active": False,
-                        "updated_at": datetime.now().isoformat(),
+                        "updated_at": now_tw_iso(),
                     },
                     "$push": {
                         "history": {
-                            "ts": datetime.now().isoformat(),
+                            "ts": now_tw_iso(),
                             "op": "revoke",
                             "reason": "expire_sweep",
                         }
@@ -245,5 +252,5 @@ async def redeem(*args, **kwargs):
 
 
 if __name__ == "__main__":
-    print(datetime.now().isoformat())
-    print(date.today().isoformat())
+    print(now_tw_iso())
+    print(today_tw().isoformat())
