@@ -2,24 +2,12 @@ from tm_twitch_bot.scripts.role_system import Character
 from tm_twitch_bot.utils.chat_sender import chat_sender
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
-import threading
+from tm_twitch_bot.utils.singleton import SingletonMeta
 import asyncio
 import random
 
 
-class _SingletonMeta(type):
-    _instances: dict[type, "GuessNumberGame"] = {}
-    _lock = threading.Lock()
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            with cls._lock:
-                if cls not in cls._instances:
-                    cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class GuessNumberGame(metaclass=_SingletonMeta):
+class GuessNumberGame(metaclass=SingletonMeta):
     DEFAULT_MAX = 1000
     GUESS_FEE = 5
     PRIZE_INC_PER_GUESS = 2

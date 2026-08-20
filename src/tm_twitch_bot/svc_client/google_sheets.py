@@ -1,25 +1,13 @@
 from tm_twitch_bot.utils.http_utils import request_with_retries
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
+from tm_twitch_bot.utils.singleton import SingletonMeta
 from typing import Optional
-import threading
 
 gs_config = config["google_sheets"]
 
 
-class _SingletonMeta(type):
-    _instances: dict[type, "GoogleSheetsClient"] = {}
-    _lock = threading.Lock()
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            with cls._lock:
-                if cls not in cls._instances:
-                    cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class GoogleSheetsClient(metaclass=_SingletonMeta):
+class GoogleSheetsClient(metaclass=SingletonMeta):
     def __init__(self):
         self.base_url = gs_config["svc_url"]
         self.sheet_url = gs_config["sheet_url"]

@@ -12,25 +12,13 @@ JSON Schema 的 `winner` / `battle_log` 兩個欄位，而 n8n 的 TM AI Agent
 
 from tm_twitch_bot.utils.http_utils import request_with_retries, LONG_TIMEOUT
 from tm_twitch_bot.utils.yaml_utils import config
+from tm_twitch_bot.utils.singleton import SingletonMeta
 from typing import Optional
-import threading
 
 openai_config = config["openai"]
 
 
-class _SingletonMeta(type):
-    _instances: dict[type, "OpenAIClient"] = {}
-    _lock = threading.Lock()
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            with cls._lock:
-                if cls not in cls._instances:
-                    cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class OpenAIClient(metaclass=_SingletonMeta):
+class OpenAIClient(metaclass=SingletonMeta):
     def __init__(self):
         self.base_url = openai_config["svc_url"]
         self.api_key = openai_config["api_key"]

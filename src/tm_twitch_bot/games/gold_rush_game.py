@@ -3,23 +3,11 @@ from tm_twitch_bot.scripts.role_system import Character
 from tm_twitch_bot.utils.chat_sender import chat_sender
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
-import threading
+from tm_twitch_bot.utils.singleton import SingletonMeta
 import asyncio
 
 
-class _SingletonMeta(type):
-    _instances: dict[type, "GoldRushGame"] = {}
-    _lock = threading.Lock()
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            with cls._lock:
-                if cls not in cls._instances:
-                    cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class GoldRushGame(metaclass=_SingletonMeta):
+class GoldRushGame(metaclass=SingletonMeta):
     def __init__(self):
         self._active = False
         self._entries: dict[str, int] = {}

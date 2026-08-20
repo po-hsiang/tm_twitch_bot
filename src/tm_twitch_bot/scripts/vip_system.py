@@ -3,10 +3,10 @@ from tm_twitch_bot.svc_client import twitch_vips_api
 from tm_twitch_bot.scripts.role_system import Character
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
+from tm_twitch_bot.utils.singleton import SingletonMeta
 from datetime import date, datetime, timedelta
 from dataclasses import dataclass
 from typing import Optional
-import threading
 import asyncio
 
 
@@ -28,19 +28,7 @@ def _load_vip_config() -> VipConfig:
     )
 
 
-class _SingletonMeta(type):
-    _instances: dict[type, "VipSystem"] = {}
-    _lock = threading.Lock()
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            with cls._lock:
-                if cls not in cls._instances:
-                    cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class VipSystem(metaclass=_SingletonMeta):
+class VipSystem(metaclass=SingletonMeta):
     def __init__(self):
         self.vips_col_name = "tm_twitch_vips"
         self.cfg = _load_vip_config()

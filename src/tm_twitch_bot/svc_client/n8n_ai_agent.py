@@ -17,8 +17,8 @@
 from tm_twitch_bot.utils.http_utils import get_async_client, LONG_TIMEOUT
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
+from tm_twitch_bot.utils.singleton import SingletonMeta
 from typing import Optional
-import threading
 
 agent_config = config["tm_ai_agent"]
 
@@ -27,19 +27,7 @@ agent_config = config["tm_ai_agent"]
 CHANNEL_ID_PREFIX = "twitch:"
 
 
-class _SingletonMeta(type):
-    _instances: dict[type, "N8nAiAgentClient"] = {}
-    _lock = threading.Lock()
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            with cls._lock:
-                if cls not in cls._instances:
-                    cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class N8nAiAgentClient(metaclass=_SingletonMeta):
+class N8nAiAgentClient(metaclass=SingletonMeta):
     def __init__(self):
         self.webhook_url = agent_config["webhook_url"]
         # secret 只從 .env 來，只出現在 request header，不進 log
