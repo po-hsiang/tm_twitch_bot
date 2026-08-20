@@ -20,12 +20,21 @@ class VipConfig:
 
 
 def _load_vip_config() -> VipConfig:
-    c = config.get("vip_system", {})
+    """四個值都是必填，直接索引。
+
+    原本是 `config.get("vip_system", {})` 加四個 `c.get(...)`——key 打錯
+    就是 None，而 `if not self.cfg.enabled` 會讓整個 VIP 功能靜默停用，
+    沒有任何警告（CODE_REVIEW P2-22）。
+
+    現在 yaml_utils 的 schema 在啟動時就會驗完這四個 key 的存在與型別，
+    所以這裡不必再防；同樣的打錯會變成「Bot 起不來，而且訊息指名哪個 key」。
+    """
+    c = config["vip_system"]
     return VipConfig(
-        enabled=c.get("enabled"),
-        gold_cost=c.get("gold_cost"),
-        vip_cap=c.get("vip_cap"),
-        days_per_redeem=c.get("days_per_redeem"),
+        enabled=c["enabled"],
+        gold_cost=c["gold_cost"],
+        vip_cap=c["vip_cap"],
+        days_per_redeem=c["days_per_redeem"],
     )
 
 

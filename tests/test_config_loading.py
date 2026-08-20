@@ -8,9 +8,11 @@
 不會動到模組級的 `config`，所以可以安全地重複呼叫。
 """
 
+import copy
 import logging
 
 import pytest
+import yaml
 
 from tm_twitch_bot.utils import yaml_utils
 
@@ -95,3 +97,169 @@ def test_secrets_come_from_the_env_not_the_yaml_file():
 
     for forbidden in ("client_secret", "access_token", "refresh_token", "api_key", "webhook_secret"):
         assert f"{forbidden}:" not in raw, f"{forbidden} 不該出現在 config_common.yaml"
+
+
+# ===== config_common.yaml 的 schema（CODE_REVIEW P2-22）=====
+#
+# 原本 config 完全沒有驗證。最實際的後果在 vip_system：`c.get("enabled")`
+# 打錯 key 就是 None，整個 VIP 功能靜默停用，沒有任何警告。
+# 現在同樣的錯誤會在啟動時就擋下來，而且訊息指名是哪個 key。
+
+
+@pytest.fixture
+def raw_yaml():
+    """config_common.yaml 的原始內容（還沒合併 .env 的那份）。"""
+    return yaml.safe_load(yaml_utils.CONFIG_COMMON_PATH.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def load_with(monkeypatch, tmp_path):
+    """用改過的設定內容跑一次 load_yaml()。"""
+
+    def _load(cfg: dict):
+        path = tmp_path / "config_common.yaml"
+        path.write_text(
+            yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8"
+        )
+        monkeypatch.setattr(yaml_utils, "CONFIG_COMMON_PATH", path)
+        return yaml_utils.load_yaml()
+
+    return _load
+
+
+def test_the_real_config_passes_the_schema(raw_yaml):
+    """線上那份設定檔本身必須是合法的——否則下面的測試都沒有意義。"""
+    assert yaml_utils.validate_config(raw_yaml) == []
+
+
+def test_the_schema_covers_every_key_in_the_real_config(raw_yaml):
+    """漂移守門員：新增了設定卻沒宣告型別，這裡會失敗。
+
+    刻意讓 CI 失敗而不是讓 Bot 起不來——那時人還坐在電腦前，
+    而開台時多一個沒宣告的 key 不會讓任何功能壞掉。
+    """
+    unknown = yaml_utils.unknown_config_keys(raw_yaml)
+    assert unknown == [], f"這些欄位還沒宣告在 yaml_utils._SCHEMA：{unknown}"
+
+
+def test_a_missing_key_is_reported_by_name(raw_yaml):
+    cfg = copy.deepcopy(raw_yaml)
+    del cfg["vip_system"]["enabled"]
+
+    problems = yaml_utils.validate_config(cfg)
+
+    assert any("vip_system.enabled" in p for p in problems)
+
+
+def test_a_whole_missing_section_is_reported(raw_yaml):
+    cfg = copy.deepcopy(raw_yaml)
+    del cfg["vip_system"]
+
+    problems = yaml_utils.validate_config(cfg)
+
+    assert len(problems) == 4  # 這一節的四個欄位都要各自被點名
+    assert all("vip_system." in p for p in problems)
+
+
+def test_a_wrong_type_is_reported_with_both_types(raw_yaml):
+    cfg = copy.deepcopy(raw_yaml)
+    cfg["vip_system"]["gold_cost"] = "一百"
+
+    problems = yaml_utils.validate_config(cfg)
+
+    assert len(problems) == 1
+    assert "gold_cost" in problems[0]
+    assert "int" in problems[0] and "str" in problems[0]
+
+
+def test_a_bool_is_not_accepted_as_an_int(raw_yaml):
+    """isinstance(True, int) 是 True——bool 是 int 的子類別。
+
+    但 gold_cost: true 顯然是設定錯了，不能因為型別系統的細節就放過。
+    """
+    cfg = copy.deepcopy(raw_yaml)
+    cfg["vip_system"]["gold_cost"] = True
+
+    problems = yaml_utils.validate_config(cfg)
+
+    assert len(problems) == 1
+    assert "bool" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "path, empty_value",
+    [
+        (("google_sheets", "svc_url"), ""),
+        (("twitch", "channel"), ""),
+    ],
+)
+def test_an_empty_string_is_as_bad_as_a_missing_key(raw_yaml, path, empty_value):
+    """空的 svc_url 只會讓每一次呼叫都失敗，跟沒填一樣壞。"""
+    cfg = copy.deepcopy(raw_yaml)
+    cfg[path[0]][path[1]] = empty_value
+
+    problems = yaml_utils.validate_config(cfg)
+
+    assert len(problems) == 1
+    assert "不能是空的" in problems[0]
+
+
+def test_an_empty_admin_list_is_rejected(raw_yaml):
+    """admin_user_id 空掉的話，開遊戲與 !reload 全部失效，而且不會有錯誤。"""
+    cfg = copy.deepcopy(raw_yaml)
+    cfg["admin_user_id"] = []
+
+    problems = yaml_utils.validate_config(cfg)
+
+    assert any("admin_user_id" in p for p in problems)
+
+
+def test_every_problem_is_reported_at_once(raw_yaml):
+    """啟動失敗的重試成本很高，不能修一個才發現下一個。"""
+    cfg = copy.deepcopy(raw_yaml)
+    del cfg["is_test"]
+    cfg["vip_system"]["vip_cap"] = "五十一"
+    cfg["youtube"]["svc_url"] = ""
+
+    problems = yaml_utils.validate_config(cfg)
+
+    assert len(problems) == 3
+
+
+def test_a_broken_config_stops_startup(raw_yaml, load_with):
+    """schema 不只是個工具函式，load_yaml() 真的會擋下來。"""
+    cfg = copy.deepcopy(raw_yaml)
+    del cfg["rpg_parameter"]["exp_req_multiple"]
+
+    with pytest.raises(RuntimeError) as exc:
+        load_with(cfg)
+
+    assert "rpg_parameter.exp_req_multiple" in str(exc.value)
+    assert "config_common.yaml" in str(exc.value)
+
+
+def test_an_unknown_key_only_warns(raw_yaml, load_with, caplog):
+    """多一個沒宣告的 key 不該讓整場開台沒有機器人（同 P1-37 的取捨）。"""
+    cfg = copy.deepcopy(raw_yaml)
+    cfg["vip_system"]["future_feature"] = 123
+
+    with caplog.at_level(logging.WARNING):
+        loaded = load_with(cfg)
+
+    assert loaded["vip_system"]["future_feature"] == 123  # 照常載入
+    assert "vip_system.future_feature" in caplog.text
+    assert "_SCHEMA" in caplog.text  # 訊息要講怎麼修
+
+
+def test_the_vip_section_is_read_strictly(monkeypatch):
+    """VIP 設定改成直接索引，不再是 .get() 拿到 None 然後靜默停用。
+
+    schema 已保證這四個 key 存在，所以「打錯 key」現在會在啟動時就炸，
+    而不是等到有人回報「!vip 沒反應」。
+    """
+    from tm_twitch_bot.scripts import vip_system as vs
+
+    monkeypatch.setitem(vs.config, "vip_system", {"enabled": True})
+
+    with pytest.raises(KeyError):
+        vs._load_vip_config()
