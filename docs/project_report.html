@@ -533,11 +533,11 @@
       <h3>專 案 快 照</h3>
       <ul class="meta-list">
         <li><span class="k">服務頻道</span><span class="v hl">twitch.tv/tigermeowtw</span></li>
-        <li><span class="k">Python 模組</span><span class="v">28 個（src/）</span></li>
+        <li><span class="k">Python 模組</span><span class="v">29 個（src/）</span></li>
         <li><span class="k">外部服務依賴</span><span class="v">本機 4 個（:9091~:9094）+ n8n AI Agent</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">303 項（全部離線，覆蓋率 72%）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">338 項（全部離線，覆蓋率 75%）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -1031,6 +1031,7 @@
             <tr><td class="cmd">!找歌 &lt;關鍵字&gt;</td><td>搜尋虎喵歌單</td><td class="mod">youtube.search_song</td></tr>
             <tr><td class="cmd">關鍵字觸發</td><td>句子含特定詞即回覆（例：帥）</td><td class="mod">command_dispatcher</td></tr>
             <tr><td class="cmd">管理員限定</td><td>手動開啟終極密碼 / 一桶金</td><td class="mod">games.*.start</td></tr>
+            <tr><td class="cmd">!reload</td><td>管理員限定：重新拉取五張試算表，不必重開 Bot（唯一硬寫在程式裡的指令）</td><td class="mod">sheet_reloader.reload</td></tr>
           </tbody>
         </table>
         <div class="cmd-empty" id="cmdEmpty">沒有符合的指令</div>
@@ -1045,7 +1046,7 @@
       <p>
         依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
         <br>
-        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-19，第七輪後）：共 21 項，12 項已修正、3 項部分處理。此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；第七輪另有 5 項新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42）僅記錄在該文件，皆已修正。</span>
+        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-21，第九輪後）：共 21 項，15 項已修正、2 項部分處理。此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；第七輪另有 5 項新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42）僅記錄在該文件，皆已修正。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
       </p>
     </div>
@@ -1343,9 +1344,9 @@
      desc:"greet_user 的第一個 return 之後還有一行使用冒險台詞池的 return，永遠不會執行；但冒險台詞仍在啟動時從 Sheets 載入，白白多一次網路呼叫。",
      fix:"擇一保留：刪除死碼與對應的資料載入，或恢復隨機台詞功能。",
      files:["scripts/greeter.py:35"]},
-    {cat:"bug", sev:"low", title:"get_tigermeow_char 回傳原始查詢結果而非 Character",
+    {cat:"bug", sev:"low", st:"done", title:"get_tigermeow_char 回傳原始查詢結果而非 Character",
      desc:"其他查詢方法都會轉成 Character 物件，唯獨這個方法直接回傳 mongo 的 list 結果，呼叫端若比照使用 .gold 等屬性會出錯。",
-     fix:"比照 find_by_user_id 以 from_dict 包裝後回傳。",
+     fix:"第九輪直接刪除，而不是照原建議包成 Character——它零呼叫端，包起來只是留一個沒人用的方法，而錯誤的型別註記會誘導下一個人去用它（CODE_REVIEW P2-28）。真的需要時 find_by_user_id 就夠了。",
      files:["scripts/role_system.py:130"]},
     {cat:"bug", sev:"low", st:"done", title:"validate() 的型別註記與實際回傳不符",
      desc:"函數註記回傳 str，實際回傳 (bool, str) tuple；失敗分支回傳 False, \"\" 的寫法也容易誤讀。",
@@ -1369,7 +1370,7 @@
      files:["scripts/vip_system.py:63"]},
     {cat:"perf", sev:"mid", st:"partial", title:"各式快取缺乏失效機制",
      desc:"YouTube 歌單只在啟動時抓一次；_last_cmd_ts 與 _last_message 字典無上限成長。長時間運行下資料越來越舊、記憶體緩慢上升。（更正：!吃 / !梗 / 招呼名單「重啟才重置」經確認為刻意設計——Bot 只在開台時啟動，進程生命週期就等於一場直播，見「營運架構決策」。）",
-     fix:"建立統一的 TTL 快取工具；定期修剪冷卻字典。原本建議的「每日重置 food / meme / 招呼名單」已撤回，與刻意的營運設計衝突。",
+     fix:"建立統一的 TTL 快取工具；定期修剪冷卻字典。原本建議的「每日重置 food / meme / 招呼名單」已撤回，與刻意的營運設計衝突。第九輪補上手動失效：!reload 會清掉三張內容表的快取（但刻意不清「一人一餐」「一場一則梗」「一場打一次招呼」這些遊戲規則）。YouTube 歌單的快取仍然沒有任何失效機制。",
      files:["svc_client/youtube.py","scripts/daily_food_picker.py","scripts/message_controller.py"]},
     {cat:"perf", sev:"mid", st:"partial", title:"斷線或例外後 Bot 直接死亡，無自動重連",
      desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。（已補上 graceful shutdown：SIGINT / SIGTERM 會依序取消排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，finally 裡的 sys.exit 也已移除。）",
@@ -1387,14 +1388,14 @@
      desc:"升級經驗計算、指令解析、遊戲規則、轉職表解析等大多是純函數，非常適合單元測試，目前完全沒有覆蓋。",
      fix:"先為 role_system.gain_exp、command_dispatcher 解析、guess_number / gold_rush 規則補 pytest；搭配前述的 lazy 初始化改造，測試就不需要真的連微服務。",
      files:["tests/"]},
-    {cat:"quality", sev:"low", title:"指令集無法熱更新",
-     desc:"指令表只在啟動時載入一次，營運修改 Sheets 後必須重啟 Bot 才生效，與「試算表當 CMS」的設計初衷相違。",
-     fix:"新增管理員限定的 !reload 指令重新拉取指令集，或由排程器每 N 分鐘自動重載。",
-     files:["scripts/command_dispatcher.py"]},
-    {cat:"quality", sev:"low", st:"partial", title:"清理死碼與佔位資訊",
-     desc:"error_utils / vault_utils / asset_file_utils 幾乎整檔註解（含另一專案 vivy 的遺留）、tttest.py 為草稿檔、pyproject 的 authors 仍是範本值。（main.py finally 裡的 sys.exit 已隨 graceful shutdown 一併移除。）",
-     fix:"已處理的部分：導入 ruff 後清掉 dump_obj_utils 三個未使用的 import，並把它真的用到的 attrs 補進 dependencies（過去只靠 twitchAPI 的傳遞依賴）；main.py 那段已無必要的 sys.path hack 也一併移除。剩下的部分：註解掉的舊碼要不要留由頻道主決定（不會擅自刪除），tttest.py 已排除於 lint 之外。",
-     files:["utils/error_utils.py","utils/vault_utils.py","tttest.py","pyproject.toml"]}
+    {cat:"quality", sev:"low", st:"done", title:"指令集無法熱更新",
+     desc:"指令表只在啟動時載入一次，營運修改 Sheets 後必須重啟 Bot 才生效——而開台途中重啟就是斷線一次，與「試算表當 CMS」的設計初衷相違。",
+     fix:"新增管理員限定的 !reload（scripts/sheet_reloader.py），一次重拉指令集與轉職表、並清掉吃啥／諧音梗／冒險台詞的惰性快取。刻意只重載資料不重載程式（importlib.reload 會讓七個單例各生出第二份實例，進行中的遊戲會憑空消失）；也刻意不做排程自動重載（頻道主改表時人就在現場，定時拉表只會讓改動在無法預期的時間點生效，還可能把改到一半的表推上線）。!reload 是全專案唯一硬寫在程式裡的指令，因為它是修復工具，不能跟著壞掉的那張表一起失效。詳見 CODE_REVIEW P2-26。",
+     files:["scripts/sheet_reloader.py","scripts/command_dispatcher.py","main.py"]},
+    {cat:"quality", sev:"low", st:"done", title:"清理死碼與佔位資訊",
+     desc:"error_utils / vault_utils / asset_file_utils 幾乎整檔註解（含另一專案 vivy 的遺留）、tttest.py 為草稿檔。真正的成本不是那幾行佔空間，而是下一個讀的人分不出哪些是活的。（main.py finally 裡的 sys.exit 已隨 graceful shutdown 一併移除。）",
+     fix:"第九輪結案，分兩類處理。刪掉的：tttest.py（裡面那份轉職表已經和線上不一樣——寫二轉 15 等，線上是 30 等，留著會誤導）、role_system.get_tigermeow_char()、GoldRushGame._timer。保留但寫明理由的：dump_obj_utils 是手動除錯 twitchio attrs 物件用的工具，零呼叫端是刻意的（也是宣告 attrs 的唯一理由）；三支註解檔一行都沒刪，改為在檔頭註明是刻意保留的備忘、不是待清的死碼。沒有採用原建議的「搬到 docs/ 或獨立分支」——搬走等於把「這支檔案本來想做什麼」跟檔案本身拆開。詳見 CODE_REVIEW P2-28。",
+     files:["utils/error_utils.py","utils/vault_utils.py","utils/dump_obj_utils.py","pyproject.toml"]}
   ];
   var SEV_LABEL = {high:"高", mid:"中", low:"低"};
   var CAT_LABEL = {sec:"安全性", bug:"正確性", perf:"效能與穩定性", quality:"程式品質"};

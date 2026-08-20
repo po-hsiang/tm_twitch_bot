@@ -4,7 +4,7 @@
 | --- | --- |
 | 健檢日期 | 2026-08-09 |
 | 基準版本 | `584821e`（健檢起點） |
-| 最後更新 | 2026-08-20，第八輪修正後 |
+| 最後更新 | 2026-08-21，第九輪修正後 |
 | 範圍 | `src/tm_twitch_bot/` 全部模組、`pyproject.toml`、版控與部署設定 |
 | 評估準則 | 依使用者指定的優先序：**穩定 > 好維護 > 好擴充** |
 
@@ -127,6 +127,24 @@
 覆蓋率細節見 [附錄 B](#附錄-b測試覆蓋率現況)。
 
 剩餘 8 項待處理，內容如下。
+
+### 第九輪
+
+| 編號 | 項目 | 狀態 |
+| --- | --- | --- |
+| P2-26 | 指令集無法熱重載 | ✅ 🧪 |
+| P2-28 | 死碼與未宣告依賴 | ✅ |
+| P2-29 | 表頭處理不一致 | ✅ 🧪 **查證後確認「不一致」才是對的** |
+
+`!reload` 上線：管理員在聊天室打一次就重新拉五張表，不必重開 Bot。
+它是**全專案唯一硬寫在程式裡的指令**——理由是「指令集沒載入成功」正是最需要
+它的時候，放在試算表上就變成「要修的東西壞了，修它的工具也一起壞」。
+
+P2-29 的結論和原本的建議相反：三張表的形狀真的不一樣（吃啥有分類標題列，
+另兩張沒有），所以**不能統一**。已把那個結論寫成測試，下一個人「順手統一」
+時會有測試紅掉告訴他為什麼不行。
+
+測試總數 **338 項**，覆蓋率 **75%**。剩餘 5 項待處理。
 
 ---
 
@@ -548,11 +566,53 @@ twitchio 的 `Messageable.send` 是把內容原樣內插進 `PRIVMSG #頻道 :{c
 
 **刻意沒有照原建議做 `CommandContext` 型別。** 「按參數名注入」同樣讓函式的需求變明確、可標註型別，卻不必多一層物件包裝，也不必改寫 19 個線上指令函式——那些多半只有開台時才會真正被執行到，測試不一定攔得住改壞的地方。以 **穩定 > 好維護 > 好擴充** 的順序來看，這個換法拿到了同樣的擴充性而風險低得多。
 
-### P2-26 🔲 指令集無法熱重載
+### P2-26 ✅🧪 指令集無法熱重載
 
-改了 Google Sheets 就得重啟 Bot。建議加一個 admin 專用的 `!reload`，或掛定時重新拉表。
+`scripts/sheet_reloader.py`（新增）· `scripts/command_dispatcher.py` · `main.py`
 
-注意：`_load_function` 上的 `lru_cache` 會讓函式綁定黏住，重載時要一併 `cache_clear()`。
+改了 Google Sheets 就得重啟 Bot——而開台途中重啟就是斷線一次，
+「試算表當 CMS、隨時能改」這件事實際上做不到。
+
+**已修正**：管理員專用的 `!reload`，一次重新拉五張表。
+
+| 表 | 重載方式 |
+| --- | --- |
+| 指令集 | 重抓並換掉 `COMMAND_SET` |
+| 轉職表 | 重抓並換掉 `JOB_CONFIG` |
+| 吃啥、酷酷的諧音梗、冒險台詞 | 清掉惰性快取，下一次用到時自己重抓 |
+
+幾個刻意的取捨：
+
+- **只重載「資料」，不重載「程式」。** `importlib.reload` 聽起來更徹底，但這個
+  專案有七個單例（`chat_sender`、四個微服務 client、兩個遊戲），reload 會生出
+  第二份類別與第二個實例：進行中的終極密碼會憑空消失，其他模組手上的舊參考
+  還指著舊類別，之後所有 `isinstance` 都不成立。**改了程式就重開 Bot**，
+  那才是誠實的做法，也寫在模組說明裡了。
+- **`!reload` 硬寫在程式裡**（`BUILTIN_COMMANDS`，全專案唯一一個），而且刻意排在
+  「指令集是否已載入」的檢查**之前**、也刻意蓋過試算表上的同名列。理由很具體：
+  它是修復工具，而指令集載入失敗正是最需要它的時候——放在試算表上就成了
+  「要修的東西壞了，修它的工具也一起壞」。
+- **內容表的「一人一次」規則不清。** `food_cache`（一人一餐）、`meme_cache`
+  （一場一則梗）、`who_arrived`（一場打一次招呼）都是遊戲規則，不是試算表的快取。
+  連它們一起清，`!reload` 就變成重骰按鈕了。代價是這場已經抽過的梗要下一場
+  才會換——已寫進測試的說明裡。
+- **重載失敗不會讓 Bot 變成沒有指令。** `load_command_set` 是「先抓表、成功才
+  `clear` + `update`」，所以抓表失敗時線上那份完全不受影響。這條有專門的測試。
+- 原建議的「掛定時重新拉表」**刻意不做**：頻道主改表時人就在現場，定時拉表只會
+  讓改動在無法預期的時間點生效，還可能把改到一半的表推上線。
+
+`_load_function` 的 `lru_cache` 依原建議一併清掉（連 `_wanted_params` 也清）。
+查證後補一個細節：那個快取其實不會擋住「換了函式路徑」的情況——`lru_cache`
+的 key 是 qualname 字串，換了路徑就是新的 key，而且 `lru_cache` 不會快取例外。
+清它真正的意義是「快取不能比它建立時依據的那張表活得久」。
+
+順帶把 `SHEET_LOADERS` 從 `main.py` 移到 `sheet_reloader`，讓降級啟動、
+五分鐘重試、`!reload` 三處吃同一份清單——兩邊各自維護的話，日後加第三張表
+很容易只改到一邊。
+
+實機驗過（2026-08-21，四個微服務都在跑）：路人打 `!reload` 沒有任何回應；
+虎喵打全形的 `！RELOAD` 回「✅ 已重新載入 5 張表，指令集共 73 筆」，
+三個池子由 231／39／80 歸零、函式快取歸零，之後第一次 `!吃` 又自己抓回 231 筆。
 
 ### P2-27 ✅ GPT session 是全頻道共用單一上下文 —— **隨模組移除而消滅**
 
@@ -564,18 +624,69 @@ twitchio 的 `Messageable.send` 是把內容原樣內插進 `PRIVMSG #頻道 :{c
 
 > **資料庫殘留**：MongoDB 的 `gpt_chat_sessions` collection 還在，程式已不再讀寫。要不要清掉由頻道主決定——本專案不會擅自刪別人的資料。
 
-### P2-28 🔲 死碼與未宣告依賴
+### P2-28 ✅ 死碼與未宣告依賴
 
-- ~~`utils/dump_obj_utils.py:1` — `import attr`，但 **`attrs` 沒有宣告在 `pyproject.toml`**~~ → **已於第七輪補上宣告**（`a26e5d6`）。attrs 早就在 `uv.lock` 裡，宣告只是把既有事實寫明，不增加安裝成本。ruff 同時清掉了同一行三個未使用的 import（`json`、`logging`、`inspect`）。**這個模組仍然零呼叫端**，要不要留由頻道主決定。
-- `scripts/role_system.py:131` — `get_tigermeow_char()` 宣告回傳 `Character`，實際回傳 mongo 的 raw list，零呼叫端。
-- `tttest.py`、`GoldRushGame._timer`（宣告了 `threading.Timer` 但從未使用）。
-- `utils/vault_utils.py`、`utils/asset_file_utils.py`、`utils/error_utils.py` 有大量註解掉的舊碼。**這部分不會擅自刪除**，但建議決定去留：要留就移到 `docs/` 或獨立分支，留在 `utils/` 會讓人誤以為是活的。
+處置分成「刪掉」與「寫明為什麼留著」兩類。這個項目真正的成本不是那幾行程式
+佔了空間，而是**下一個讀的人分不出哪些是活的**——所以留下來的也要處理。
 
-### P2-29 🔲 表頭處理不一致
+**已刪除：**
 
-`scripts/daily_food_picker.py:13` 用 `raw_food_data[1:]` 跳過標題列，但 `scripts/daily_meme_picker.py:12` 與 `scripts/greeter.py:19` 都沒跳。
+- `scripts/role_system.py` 的 `get_tigermeow_char()` — 宣告回傳 `Character`，
+  實際回傳 mongo 的 raw list，零呼叫端。留著只會有人照著型別註記去用然後踩坑。
+- `GoldRushGame._timer` — 宣告了 `threading.Timer | None` 但從未賦值、從未讀取。
+  真正的倒數走的是 `loop.call_later`，這個欄位只會讓人以為有第二套計時機制。
+  （`import threading` 保留，`_SingletonMeta` 的鎖還要用。）
+- `tttest.py` — 手動試算稿。決定刪掉的關鍵不是「它沒被呼叫」，而是**它裡面那份
+  轉職表已經和線上不一樣了**（寫著二轉 15 等，線上實際是 30 等），留著會誤導。
+  裡面的 `exp_between()` 是設計經驗曲線時的閉式解計算器，線上真正用的是
+  `role_system._exp_to_next_level()`；真的要用，
+  `git log --diff-filter=D -- src/tm_twitch_bot/tttest.py` 找到刪除它的 commit，
+  再 `git show <commit>^:src/tm_twitch_bot/tttest.py` 就拿回來了。`pyproject.toml` 為它加的 ruff 排除與覆蓋率排除一併移除。
 
-請確認「酷酷的諧音梗」與「冒險台詞」兩張表的第一列是否為標題——是的話目前會被當成內容抽出來。
+**決定保留，但補上「為什麼留著」：**
+
+- `utils/dump_obj_utils.py` — **零呼叫端是刻意的**。twitchio 與 twitchAPI 的事件
+  物件是 attrs 類別，`print()` 出來看不到欄位；線上出怪事時臨時 import 它把物件
+  攤開來看。十行、import 階段無副作用，留著的成本趨近於零。已在檔頭寫明用途，
+  也寫明它是 `pyproject.toml` 宣告 `attrs` 的唯一理由（第七輪 `a26e5d6` 補的宣告）。
+- `utils/vault_utils.py`、`utils/asset_file_utils.py`、`utils/error_utils.py` 的
+  註解舊碼 — **一行都沒有刪**（頻道主的東西不擅自處理）。改為在每支檔頭加一句話
+  說明那是刻意保留的備忘、不是待清的死碼，`error_utils` 那句還指明「活著的只有
+  `StatusCodeError`」。原建議的「移到 docs/ 或獨立分支」沒有採用：搬走等於把
+  「這支檔案本來想做什麼」和檔案本身拆開，而一句檔頭註解就解決了誤讀的問題。
+
+### P2-29 ✅🧪 表頭處理不一致 —— **查證後確認「不一致」才是對的**
+
+`utils/sheet_utils.py`（新增）· `scripts/daily_food_picker.py` · `scripts/daily_meme_picker.py` · `scripts/greeter.py`
+
+原本的疑慮：`daily_food_picker` 用 `raw_food_data[1:]` 跳過標題列，
+`daily_meme_picker` 與 `greeter` 都沒跳，看起來是其中一支寫錯。
+
+**2026-08-21 直接打 9091 核對三張表的實際內容，結論是三支都是對的：**
+
+| 工作表 | 第 0 列實際是什麼 | 該跳嗎 | 原本的寫法 |
+| --- | --- | --- | --- |
+| 吃啥 | 分類標題（飯／飯糰／燴飯／丼飯…），第 1 列起才是餐點 | 要 | 跳 ✅ |
+| 酷酷的諧音梗 | **空列**（微服務回 `[]`），第 1 列起才是內容 | 不要 | 不跳 ✅ |
+| 冒險台詞 | 第一句台詞本身（「蛇髮女妖似乎愛上了你…」） | 不要 | 不跳 ✅ |
+
+所以這一項**不是修 bug，是修「看起來像 bug」**。真正的問題是那三行程式沒有
+任何地方寫著為什麼不一樣，下一個人很可能順手統一，然後安靜地少掉一列內容
+（諧音梗第 1 列有 4 則梗，冒險台詞第 0 列是 1 句台詞）。
+
+處置：
+
+- 三支各自寫了一份幾乎相同的巢狀 comprehension，抽成 `sheet_utils.collect_cells()`
+- `skip_header` 是 **keyword-only 且沒有預設值**——這個決定必須看過那張表才能下，
+  不該有人靠「預設應該是對的」帶過去。有測試釘住這件事
+- 三張表的實際形狀寫在 `sheet_utils` 的模組說明裡，呼叫處各留一行說明
+- 順手修掉的小事：原本的寫法用 `if item.strip()` 過濾空格卻 append 未 strip 的值，
+  試算表多打的一個空白會一路帶到聊天室；現在統一 strip
+- `tests/test_sheet_utils.py`（17 項）把上表的結論鎖住：把任一支的 `skip_header`
+  反過來就會有測試紅掉，並說明為什麼不能統一
+
+> 諧音梗那張表就算跳過第 0 列也剛好不會出事——它是空列——但依賴這件事很危險：
+> 那一列哪天被填上內容就會安靜地被吃掉，而且不會有任何錯誤。
 
 ### P2-30 ✅🧪 `parse_jobs_sheet` 對短列會 IndexError
 
@@ -657,7 +768,7 @@ return f"{battle_log} 勝利者為: @{winner}"
 **規則刻意選得保守**：只開 `F` / `E` / `W` / `B`（抓真問題），不開 `I`、`UP`、`SIM`。後者會把每個檔案的 import 重排或改寫既有的正確程式碼，製造巨大且沒有價值的 diff，還讓 `git blame` 失效。同理也**沒有**整份套用 `ruff format`。
 
 - `E501`（行太長）排除：專案有大量中文 f-string 訊息，為湊行寬拆字串反而更難讀
-- `tttest.py` 排除：手動試算稿，去留由頻道主決定
+- ~~`tttest.py` 排除：手動試算稿，去留由頻道主決定~~ → 第九輪已刪除該檔，排除設定隨之移除（見 P2-28）
 - 沒有加 `black`：ruff 自帶 formatter，多一個工具只會多一套設定要同步
 - 沒有加 `pre-commit`：CI 已經擋住了，本機再擋一次的邊際效益低
 
@@ -800,14 +911,22 @@ await level_and_job_system.load_job_config()  # → 9091
 
 ## 建議的下一批處理順序
 
-**P0 與 P1 已全數結案**（P0-7、P1-12 為評估後決定不處理）。剩下的 12 項都不會造成資料錯誤或服務中斷。
+**P0 與 P1 已全數結案**（P0-7、P1-12 為評估後決定不處理）。
+第九輪之後剩下 **5 項**，全都不會造成資料錯誤或服務中斷。
 
-第七輪之後的建議順序：
+第九輪之後的建議順序：
 
-1. **P2-26**（指令集熱重載）——改了 Google Sheets 就得重啟，與「試算表當 CMS」的初衷相違。注意 `_load_function` 的 `lru_cache` 要一併 `cache_clear()`
-2. **P2-21、P2-22、P2-28、P2-29**——`_SingletonMeta` 重複七份、config 無 schema 驗證、死碼去留、表頭處理不一致
-3. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8；目前都在同一台機器上所以看不出來
-4. **P3-34、P3-36**——OAuth 工具殘留（含 `state` 的 CSRF 缺口）、硬編碼的指令集網址
+1. **P2-22**（config 沒有 schema 驗證）——剩下五項裡**唯一還會「靜默失效」的**：
+   `vip_system` 的 `c.get("enabled")` 沒有 default，key 打錯就是 `None`，
+   整個 VIP 功能無聲停用。這類 bug 的特徵是「等到有人回報才知道」，
+   而回報的通道是 Twitch 聊天室
+2. **P2-21、P3-36**——`_SingletonMeta` 重複七份、上線公告的指令集網址硬編碼。
+   兩件都是十幾行的整理，沒有行為風險；P3-36 有實際的兩處不同步風險
+3. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8。
+   目前都在同一台機器上所以看不出來，但它是「哪天搬機器才會爆」的那種
+4. **P3-34**（OAuth 的 `state` CSRF 缺口）——排最後不是因為最不重要，而是因為
+   它要改動頻道主手動執行的授權流程（產生 state、貼進網址、回來比對三件一起做），
+   不是純程式改動
 
 > **本 repo 之外但最該做的一件事**：四個微服務都沒有版本控管（見 P3-32 的查證發現）。以「壞掉的代價」來排，這件事比上面任何一項都嚴重。
 
@@ -969,22 +1088,28 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 
 # 附錄 B｜測試覆蓋率現況
 
-`uv run pytest --cov` — **303 項測試，整體 72%**（1737 敘述句中 479 未覆蓋）。
-`if __name__ == "__main__":` 的手動試跑區塊與 `tttest.py` 不列入計算，那些不是產品路徑。
+`uv run pytest --cov` — **338 項測試，整體 75%**（1786 敘述句中 438 未覆蓋）。
+各模組結尾 `if __name__ == "__main__":` 的手動試跑區塊不列入計算，那不是產品路徑。
+（`tttest.py` 的排除設定已隨該檔於第九輪刪除而移除，見 P2-28。）
 
 ## 依風險分層
 
 | 層級 | 模組 | 覆蓋率 |
 | --- | --- | --- |
-| **完全覆蓋**（歷次修過的高風險模組） | `chat_sender`、`tm_ai_agent`、`n8n_ai_agent`、`gacha_handler`、`error_utils` | 100% |
-| **高** | `log_utils` 96%、`token_manager` 95%、`guess_number_game` 93%、`rank_system` 94%、`yaml_utils` 92%、`role_system` 91%、`message_controller` 91% | 91–96% |
-| **中** | `level_and_job_system` 88%、`http_utils` 86%、`greeter` 84%、`gold_rush_game` 83%、`vip_system` 82%、`command_dispatcher` 79%、`task_scheduler` 79% | 79–88% |
-| **偏低** | `openai` 73%、`mongo_atlas` 72%、`duel` 65%、`google_sheets` 65%、`main` 32%、`twitch_vips_api` 24% | 24–73% |
-| **零覆蓋** | `youtube`、`call_timer`、`daily_food_picker`、`daily_meme_picker`、`dump_obj_utils` | 0% |
+| **完全覆蓋**（歷次修過的高風險模組） | `chat_sender`、`tm_ai_agent`、`n8n_ai_agent`、`gacha_handler`、`yaml_utils`、`error_utils`、`sheet_utils`、`sheet_reloader`、`daily_food_picker`、`daily_meme_picker` | 100% |
+| **高** | `log_utils` 96%、`token_manager` 95%、`rank_system` 94%、`guess_number_game` 93%、`role_system` 92%、`greeter` 91%、`message_controller` 91% | 91–96% |
+| **中** | `command_dispatcher` 89%、`level_and_job_system` 88%、`http_utils` 86%、`gold_rush_game` 83%、`vip_system` 82%、`task_scheduler` 79% | 79–89% |
+| **偏低** | `probability_utils` 75%、`openai` 73%、`mongo_atlas` 72%、`duel` 65%、`google_sheets` 65%、`main` 32%、`twitch_vips_api` 24% | 24–75% |
+| **零覆蓋** | `youtube`、`call_timer`、`dump_obj_utils` | 0% |
 
 ## 怎麼看這些數字
 
-**不必補到高的**：`openai`、`youtube`、`twitch_vips_api`、`google_sheets`、`mongo_atlas` 的未覆蓋部分幾乎都是微服務的薄 HTTP 包裝——真正的風險（重試策略、逾時、`find` 回傳 `None`）已經分別由 `test_http_utils` 與 `test_mongo_find_contract` 蓋住了，包裝層再測一次只是重複。`daily_food_picker` / `daily_meme_picker` / `call_timer` 都是十幾行的隨機挑選器。
+**不必補到高的**：`openai`、`youtube`、`twitch_vips_api`、`google_sheets`、`mongo_atlas` 的未覆蓋部分幾乎都是微服務的薄 HTTP 包裝——真正的風險（重試策略、逾時、`find` 回傳 `None`）已經分別由 `test_http_utils` 與 `test_mongo_find_contract` 蓋住了，包裝層再測一次只是重複。`call_timer` 是十幾行的挑選器，`dump_obj_utils` 是手動除錯工具（零呼叫端是刻意的，見 P2-28）。
+
+> 第九輪的意外收穫：`daily_food_picker` 與 `daily_meme_picker` 從 0% 變成 100%。
+> 不是為了數字去補的——P2-29 要釘住「哪張表有標題列」、P2-26 要釘住「`!reload`
+> 不能變成重骰按鈕」，這兩件事寫成測試之後，那兩支十幾行的模組就順便全覆蓋了。
+> 這正好是「照風險排順序」而不是「照覆蓋率排順序」的例子。
 
 **`main.py` 32% 是合理的**：未覆蓋的是 `event_ready`、`on_points`、token 同步這些相依 twitchio 內部結構的部分，要測得先造一整套假的 twitchio。已覆蓋的是真正有邏輯分支的 `shutdown()` 與 `load_sheet_config()`。
 

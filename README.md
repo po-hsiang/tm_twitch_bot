@@ -137,6 +137,7 @@ tm_twitch_bot/
 │   ├── scripts/                # 核心業務邏輯
 │   │   ├── message_controller.py   # 訊息處理管線（冷卻/洗頻/獎勵/派發）
 │   │   ├── command_dispatcher.py   # 指令派發器（Sheets 設定 + 動態載入函數）
+│   │   ├── sheet_reloader.py       # !reload：熱重載五張試算表（管理員限定）
 │   │   ├── role_system.py          # Character 資料模型與 RPG 行為
 │   │   ├── level_and_job_system.py # 轉職表解析
 │   │   ├── rank_system.py          # 排行榜
@@ -167,6 +168,7 @@ tm_twitch_bot/
 │       ├── chat_sender.py          # 統一發話出口（換行整平 + 長度截斷 + 速率限制）
 │       ├── log_utils.py            # Logger（主控台彩色 + 檔案輪替）
 │       ├── probability_utils.py    # 加權隨機
+│       ├── sheet_utils.py          # 試算表攤平（哪張表有標題列寫在這裡）
 │       └── ...
 └── tests/                      # pytest 測試（全離線，不需啟動微服務）
     ├── conftest.py                 # 假環境變數與共用 fixture
@@ -191,6 +193,8 @@ tm_twitch_bot/
     ├── test_token_manager.py
     ├── test_duel.py
     ├── test_config_loading.py
+    ├── test_sheet_reloader.py
+    ├── test_sheet_utils.py
     └── test_log_utils.py
 ```
 
@@ -244,7 +248,15 @@ tm_twitch_bot/
 | `!YT` | 隨機推薦歌單歌曲 | `youtube.pick` |
 | `!找歌 <關鍵字>` | 搜尋歌單 | `youtube.search_song` |
 
-管理員（`admin_user_id`）限定：手動開啟終極密碼／一桶金（`guess_number_game.start`、`gold_rush_game.start`）。
+管理員（`admin_user_id`）限定：
+
+| 指令 | 功能 | 對應模組 |
+|---|---|---|
+| `!reload` | 重新拉取五張試算表，不必重開 Bot | `sheet_reloader.reload` |
+| （見下）| 手動開啟終極密碼／一桶金 | `guess_number_game.start`、`gold_rush_game.start` |
+
+`!reload` 是**唯一不從試算表來的指令**，因為它是修復工具——指令集載入失敗時它還是要能用。
+非管理員打了不會有任何回應。
 
 ---
 
@@ -364,9 +376,9 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 uv run pytest
 ```
 
-目前 303 項測試，約 0.45 秒跑完，整體覆蓋率 72%（`uv run pytest --cov`）。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
+目前 338 項測試，約 0.5 秒跑完，整體覆蓋率 75%（`uv run pytest --cov`）。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、同頻道排隊、七種失敗模式）、`guess_number_game` 與 `gacha_handler`（金幣邊界與設定表健檢）、`token_manager`（token 寫回順序）、`duel`（模型輸出驗證與勝者比對）、`yaml_utils`（哪些環境變數是硬性要求、哪些是選填）。
+覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、同頻道排隊、七種失敗模式）、`guess_number_game` 與 `gacha_handler`（金幣邊界與設定表健檢）、`token_manager`（token 寫回順序）、`duel`（模型輸出驗證與勝者比對）、`yaml_utils`（哪些環境變數是硬性要求、哪些是選填）、`sheet_reloader`（熱重載的權限、失敗隔離、以及「重載失敗不會讓 Bot 變成沒有指令」）、`sheet_utils`（三張內容表各自該不該跳標題列）。
 
 覆蓋率的分層解讀（哪些該補、哪些刻意不補）見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 附錄 B。
 
@@ -399,7 +411,11 @@ uv run pytest
 - **發話速率與格式**：所有進聊天室的訊息都經過 `utils/chat_sender.py`——限制 30 秒 18 則（Twitch 官方是 20 則，超過會被靜音約 30 分鐘）、單則超過 500 字元自動截斷、多行訊息整平成單行並以 ` / ` 分隔。換行那一道是協定層的必要保護：IRC 以換行作為一則訊息的結尾，而 twitchio 只驗長度不驗換行，混進 `
 ` 會讓後半段被當成另一行協定內容送出去（見 CODE_REVIEW P1-38）。**新增指令時不必自己處理這些**，但也不要刻意產生多行字串。log 出現「已達自訂發話上限」代表當下正在排隊，不是錯誤。
 - **關閉方式**：直接按 Ctrl+C 即可，會依序取消定時排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，最多等 10 秒。收尾卡住時再按一次 Ctrl+C 會強制結束。
-- **指令集熱更新限制**：指令集於啟動時載入一次，修改試算表後需重啟 Bot 才會生效。
+- **試算表熱重載**：管理員在聊天室打 `!reload` 就會重新拉指令集與轉職表、
+  並清掉吃啥／諧音梗／冒險台詞的快取，不必重開 Bot。**只重載資料，不重載程式**——
+  改了 `.py` 還是要重開（`importlib.reload` 會讓單例各生出第二份實例，
+  進行中的遊戲會憑空消失）。另外「一人一餐」「一場一則梗」「一場打一次招呼」
+  這些是遊戲規則不是快取，`!reload` 刻意不清它們，所以這場已經抽過的梗要下一場才會換。
 - **twitchio 版本相依**：`main.py` 的 token 同步機制寫入了 twitchio 的私有屬性（`_http.token`、`_connection._token`）。套件已釘選 `twitchio>=2.10,<3`，升級時務必一併驗證。
 - **待實測**：忠誠點數兌換偶爾收不到其他使用者事件的問題，已修正 EventSub 物件被 GC 回收的疑似成因（CODE_REVIEW P0-3），但**尚未於正式頻道驗證**，上線後請實際請他人兌換一次確認。
 - **營運方式是刻意的**：Bot 採「開台時手動啟動」，不容器化、不設開機自啟——用「進程不存在」保證關台期間沒有人能刷經驗值與金幣。因此 `!吃`、`!梗`、招呼名單「每場開台重來一次」是預期行為，不是快取失效缺陷。完整的取捨分析（含 Twitch `stream.online` / `stream.offline` 事件的可行性與限制）見 [`docs/CODE_REVIEW.md` 附錄 A](docs/CODE_REVIEW.md#附錄-a營運架構手動啟動-vs-常駐服務)。
