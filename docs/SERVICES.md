@@ -100,7 +100,9 @@ Database：`tm_twitch_bot`。Collection：
 | `GET /playlist` | ✅ 唯一的端點 |
 
 **掛掉的影響**：`!YT` 與 `!找歌` 回制式錯誤訊息，其餘正常。
-歌單在啟動時抓一次並快取，快取目前不會自動失效（CODE_REVIEW P2-15）。
+歌單在啟動時抓一次並快取，快取目前不會自動失效——`!reload` 也不會清它（那支重載只管
+試算表）。對應 `project_report.html` 優化建議的「各式快取缺乏失效機制」一項；
+`CODE_REVIEW.md` 沒有這一項的 P 編號。
 
 設定：`config/config.yaml`。
 
