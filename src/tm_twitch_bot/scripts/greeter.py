@@ -1,4 +1,5 @@
 from tm_twitch_bot.svc_client.google_sheets import google_sheets_client
+from tm_twitch_bot.utils.sheet_utils import collect_cells
 from tm_twitch_bot.utils.yaml_utils import config
 from tm_twitch_bot.utils.log_utils import logger
 from datetime import datetime, timezone, timedelta
@@ -15,8 +16,10 @@ who_arrived.add(config["tigermeowtw_id"])  # 機器人不用跟虎喵打招呼
 async def _ensure_dialogue_pool() -> None:
     if not adventure_dialogue_pool:
         raw_adventure_dialogue = await google_sheets_client.get_sheet_data("冒險台詞")
+        # 這張表**沒有**標題列（第 0 列就是第一句台詞），跳過會少一句。
+        # 三張內容表的實際形狀見 utils/sheet_utils.py。
         adventure_dialogue_pool.extend(
-            item for row in raw_adventure_dialogue for item in row if item.strip()
+            collect_cells(raw_adventure_dialogue, skip_header=False)
         )
         logger.info(f"冒險台詞載入完成，共 {len(adventure_dialogue_pool)} 句")
 

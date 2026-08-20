@@ -1,4 +1,5 @@
 from tm_twitch_bot.svc_client.google_sheets import google_sheets_client
+from tm_twitch_bot.utils.sheet_utils import collect_cells
 import random
 
 _food_pool: list[str] = []  # 惰性載入（過去在 import 階段抓表）
@@ -9,9 +10,9 @@ food_cache: dict[str, str] = {}
 async def _ensure_pool() -> None:
     if not _food_pool:
         raw_food_data = await google_sheets_client.get_sheet_data("吃啥")
-        _food_pool.extend(
-            item for row in raw_food_data[1:] for item in row if item.strip()
-        )
+        # 這張表第 0 列是分類標題（飯／飯糰／燴飯…），不是餐點，所以要跳過。
+        # 另兩張內容表不跳——三張表的實際形狀見 utils/sheet_utils.py。
+        _food_pool.extend(collect_cells(raw_food_data, skip_header=True))
 
 
 async def pick(*args, **kwargs) -> str:
