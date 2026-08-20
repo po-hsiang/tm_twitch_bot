@@ -103,6 +103,11 @@ def validate_config(cfg: dict) -> list[str]:
 def unknown_config_keys(cfg: dict) -> list[str]:
     """YAML 裡有、但 schema 沒宣告的欄位。
 
+    **要在合併 .env 之前呼叫。** 合併之後的 config 會多出六個機敏 key
+    （client_id、client_secret、access_token、refresh_token、api_key、
+    webhook_secret），那些刻意不在 schema 裡，事後呼叫會把它們全當成
+    「未宣告」報出來。
+
     只記 warning、不擋啟動：多一個沒宣告的 key 不會讓任何功能壞掉，
     為它讓整場開台沒有機器人不成比例（同 P1-37 的取捨）。
     真正該擋住這種漂移的地方是 CI —— tests/test_config_loading.py
