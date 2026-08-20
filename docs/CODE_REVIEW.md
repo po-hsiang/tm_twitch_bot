@@ -4,7 +4,7 @@
 | --- | --- |
 | 健檢日期 | 2026-08-09 |
 | 基準版本 | `584821e`（健檢起點） |
-| 最後更新 | 2026-08-21，第九輪修正後 |
+| 最後更新 | 2026-08-21，第十輪修正後 |
 | 範圍 | `src/tm_twitch_bot/` 全部模組、`pyproject.toml`、版控與部署設定 |
 | 評估準則 | 依使用者指定的優先序：**穩定 > 好維護 > 好擴充** |
 
@@ -145,6 +145,26 @@ P2-29 的結論和原本的建議相反：三張表的形狀真的不一樣（�
 時會有測試紅掉告訴他為什麼不行。
 
 測試總數 **338 項**，覆蓋率 **75%**。剩餘 5 項待處理。
+
+### 第十輪
+
+| 編號 | 項目 | 狀態 |
+| --- | --- | --- |
+| P2-22 | Config 沒有 schema 驗證 | ✅ 🧪 |
+| P2-21 | `_SingletonMeta` 被複製了 8 份 | ✅ 🧪 **不是 7 份，見該項** |
+| P3-36 | 硬編碼的指令集網址 | ✅ 🧪 |
+| P3-35 | 時區處理不一致 | ✅ 🧪 **比 review 寫的嚴重，見該項** |
+
+兩項的查證結果和原本的描述不同：
+
+- **P2-21 是 8 份不是 7 份。** 第八輪隨 `gpt_chat_session` 移除記為 7 份，
+  但後來新增的 `svc_client/n8n_ai_agent.py` 又貼了一份，沒被算進去——
+  這正好證明了這一項要修的東西：「八份都一樣」沒有任何機制保證。
+- **P3-35 不只是換日提醒差 8 小時。** `vip_system` 的 `date.today()` 在 UTC
+  機器上，早上八點之前會是「昨天」——**VIP 兌換當下就少一天，過期掃描也會
+  提早一天把人的 VIP 拔掉**。那是會被觀眾感覺到的權益問題，不只是提醒晚響。
+
+測試總數 **388 項**，覆蓋率 **77%**。**剩餘 1 項待處理（P3-34）。**
 
 ---
 
@@ -492,21 +512,66 @@ twitchio 的 `Messageable.send` 是把內容原樣內插進 `PRIVMSG #頻道 :{c
 
 > Private repo 的 CI 徽章對未登入者無法顯示，因此 README 以文字說明取代徽章。
 
-### P2-21 🔲 `_SingletonMeta` 被複製了 7 份
+### P2-21 ✅🧪 `_SingletonMeta` 被複製了 8 份
 
-`svc_client/google_sheets.py`、`svc_client/mongo_atlas.py`、`svc_client/openai.py`、`svc_client/youtube.py`、`scripts/vip_system.py`、`games/gold_rush_game.py`、`games/guess_number_game.py`
+`svc_client/google_sheets.py`、`svc_client/mongo_atlas.py`、`svc_client/openai.py`、`svc_client/youtube.py`、**`svc_client/n8n_ai_agent.py`**、`scripts/vip_system.py`、`games/gold_rush_game.py`、`games/guess_number_game.py`
 
-> 第八輪從 8 份降為 7 份——`ai_actions/gpt_chat_session.py` 已移除（見 P2-27）。
+> **數字更正**：第八輪隨 `gpt_chat_session` 移除記為「8 份降為 7 份」，
+> 但後來新增的 `n8n_ai_agent` 又貼了一份，沒被算進去——所以一直是 8 份。
+> 這剛好就是這一項要修的東西：「八份都一樣」沒有任何機制保證。
 
-建議抽到 `utils/singleton.py`。另外它用的是 `threading.Lock`，但整個程式跑在單一事件圈上——語意上並不需要這把鎖。
+**已修正**：抽到 `utils/singleton.py`，八處改用共用的 `SingletonMeta`，
+八個 `import threading` 一併消失（它們只為那把鎖而存在）。
 
-### P2-22 🔲 Config 沒有 schema 驗證
+**合併之後才出現的風險，也是這次唯一需要想的地方：鎖從八把變成一把。**
 
-`scripts/vip_system.py:21-28`
+八份各有自己的鎖時，「單例 A 的 `__init__` 裡建立單例 B」是安全的；共用一把
+之後，同一條執行緒會在還持有鎖的狀態下再次要求同一把鎖，而 `threading.Lock`
+**不可重入**——那是死鎖，而且是整個程式停住、沒有任何錯誤訊息的那種。
+所以共用的那把改用 `RLock`。目前沒有任何 `__init__` 這樣寫，但這種故障只要
+「加一行看起來無害的程式碼」就會踩到。
 
-`c.get("enabled")` 沒有 default，key 打錯就是 `None` → `if not self.cfg.enabled` → **整個 VIP 功能靜默停用，沒有任何警告**。
+**鎖本身刻意留著**（review 建議可以拿掉）：現在它確實沒有作用——單例全都在
+import 階段的模組層 `foo = Foo()` 建立，import lock 已經擋住了。但它的代價
+只有啟動時八次沒有競爭的鎖操作，而哪天有人從 `asyncio.to_thread` 裡建立單例時
+它就有意義。拿掉是「省下零成本、換來一個之後很難察覺的競態」。
 
-建議：導入 `pydantic-settings`，讓 `.env` + YAML 在啟動時就驗完型別，錯了就 fail fast。
+`tests/test_singleton.py`（14 項）除了驗八個線上單例各自「再 `Cls()` 一次拿到
+的是模組層那顆」，還驗 `type(cls) is SingletonMeta`——**有人又自己貼一份就會
+被抓到**，這一項才不會第三次復發。可重入那條刻意用「驗鎖的型別」而不是只靠
+巢狀建立的測試：後者失敗的症狀是整個 pytest 卡住不動，比一行 assert 難查得多。
+
+### P2-22 ✅🧪 Config 沒有 schema 驗證
+
+`utils/yaml_utils.py` · `scripts/vip_system.py`
+
+`c.get("enabled")` 沒有 default，key 打錯就是 `None` → `if not self.cfg.enabled`
+→ **整個 VIP 功能靜默停用，沒有任何警告**。這是第九輪之後剩下的項目裡唯一
+還會「靜默失效」的一項。
+
+**已修正**：`config_common.yaml` 在啟動時驗 schema，錯了就不啟動。
+
+**刻意不導入 `pydantic-settings`**（review 的原建議）。那要把全專案四十幾處
+`config["x"]["y"]` 改成型別化物件，而那些取用點多半只在開台時才真正執行到，
+測試不一定攔得住改壞的地方。以「穩定 > 好維護 > 好擴充」來看，
+「啟動時一次驗完、缺什麼就不啟動」已經拿到這一項要的東西，風險低得多。
+
+- `_SCHEMA` 宣告 21 個欄位的路徑與型別；`validate_config()` **一次列完所有問題**
+  ——啟動失敗的重試成本很高（改一個值、重跑 bootstrap、重連聊天室）
+- **`bool` 不能當 `int` 用**：`isinstance(True, int)` 是 `True`，但
+  `gold_cost: true` 顯然是設定錯了，不能因為型別系統的細節就放過
+- **有 key 但值是空的一樣算錯**：空的 `svc_url` 只會讓每次呼叫都失敗，
+  空的 `admin_user_id` 會讓開遊戲與 `!reload` 全部靜默失效
+- **驗證排在合併 `.env` 之前**：schema 只描述 YAML，混進 env 之後就分不清
+  「缺 key」是設定檔漏了還是 `.env` 漏了，而那兩件事的處理方式完全不同
+- **schema 沒宣告的欄位只記 warning，不擋啟動**：多一個 key 不會讓任何功能
+  壞掉，為它讓整場開台沒有機器人不成比例（同 P1-37 的取捨）。真正該擋住這種
+  漂移的地方是 CI——測試有一條「schema 要蓋住設定檔裡的每一個 key」，
+  在人還坐在電腦前的時候失敗
+- `vip_system._load_vip_config` 改成直接索引，不再 `.get()` 拿 `None`
+
+> 機敏值的必填規則仍在 `_require_env`，沒有併進 schema：那是「少了就別啟動」
+> 與「少了只失去一個指令」的取捨（P1-37），和「設定檔的形狀對不對」是兩件事。
 
 ### P2-23 ✅🧪 `Character.save()` 是全欄位 `$set` 覆寫，會 lost update
 
@@ -899,41 +964,92 @@ await level_and_job_system.load_job_config()  # → 9091
 >
 > 已把死碼移除並在原處註明缺口（`a26e5d6`），刻意**不**假裝補上防護：真要補得三件一起做——產生隨機 state、放進手動貼的授權網址、回來時比對——那會改動頻道主手動執行的流程，不屬於 lint 清理的範圍。
 
-### P3-35 🔲 時區處理不一致
+### P3-35 ✅🧪 時區處理不一致 —— **比原本描述的嚴重**
 
-`scripts/task_scheduler.py:91` 用的是 naive `datetime.now()`（本機時區），但 `greeter` 與 `role_system` 都明確用 UTC+8。部署到 UTC 機器上，23:59 的換日提醒會差 8 小時。建議全專案統一。
+`utils/time_utils.py`（新增）· `scripts/task_scheduler.py` · `scripts/vip_system.py` · `scripts/greeter.py` · `scripts/role_system.py`
 
-### P3-36 🔲 硬編碼的指令集網址
+原本三種寫法混在一起：`greeter` 與 `role_system` 明確用 UTC+8，
+`task_scheduler` 與 `vip_system` 用 naive 的本機時區。
 
-`main.py` 的上線公告內嵌 Google Sheets 網址，但 `config_common.yaml` 已有 `google_sheets.sheet_url`。建議改讀 config，避免兩處不同步。
+**查證時發現 review 只點到影響最小的那一項。** 部署到 UTC 機器上：
+
+| 呼叫點 | 原本的寫法 | 後果 |
+| --- | --- | --- |
+| `task_scheduler._daily_worker` | `datetime.now()` | 23:59 的換日提醒差 8 小時（review 點到的） |
+| `vip_system._today_iso` | `date.today()` | **UTC 上午八點前是「昨天」→ 兌換當下就少一天** |
+| `vip_system.sweep_expired` | 同上 | **提早一天把人的 VIP 拔掉** |
+| `vip_system` 的四個時間戳 | `datetime.now().isoformat()` | 寫進 DB 的時間完全沒有偏移量 |
+
+VIP 那三項是會被觀眾感覺到的權益問題，不只是提醒晚響。
+
+順帶還有一致性問題：`tm_twitch_users` 的 `created_at` / `updated_at` 帶
+`+08:00`，但 `tm_twitch_vips` 的 `updated_at` 與 `history[].ts` 完全沒有偏移量，
+同一個資料庫兩種格式。改用 `now_tw_iso()` 之後新寫入的都會帶 `+08:00`；
+那兩個欄位程式從來不讀（只寫），所以舊資料不必回填。
+
+**已修正**：`utils/time_utils.py` 是唯一的「現在幾點」出口——
+`now_tw()` / `today_tw()` / `now_tw_iso()`。
+
+- **用固定 +08:00 而不是 `zoneinfo.ZoneInfo("Asia/Taipei")`**：台灣自 1979 年起
+  沒有日光節約時間，兩者結果完全相同；而 zoneinfo 在 Windows 上還要多裝
+  `tzdata` 套件，為一個永遠不變的偏移多一個依賴不划算。固定偏移也讓
+  `.replace(hour=...)` 沒有 DST 邊界問題
+- `task_scheduler` 的換日算式從 `_daily_worker` 裡抽成
+  `seconds_until(hour, minute, now=None)`：`now` 可注入，測試不必真的等到午夜；
+  `_daily_worker` 也從六行變兩行
+- **VIP 的行為完全沒變**（在台灣的機器上 `date.today() == today_tw()`），
+  到期日仍是 `YYYY-MM-DD` 字串、仍以字串比大小，資料庫的比較語意不動
+
+**怎麼測「在台灣的機器上看不出差別」的東西**：不比時間值，而是驗每個呼叫點
+真的走 `time_utils`——產出的字串帶不帶 `+08:00`、換日排程的預設時間來源是不是
+`now_tw`、招呼語的四個時段邊界（monkeypatch `greeter.now_tw`）。
+五種還原方式都驗過會紅。順帶把 `greeter` 補到 100%。
+
+### P3-36 ✅🧪 硬編碼的指令集網址
+
+`main.py`
+
+上線公告內嵌了一份 Google Sheets 網址，但抓表用的是
+`config["google_sheets"]["sheet_url"]`。換試算表時只改一邊，觀眾就會拿到
+指向舊表的連結——而且不會有任何錯誤訊息，兩邊都「正常運作」。
+
+**已修正**：改讀 config（`COMMAND_SHEET_URL`）。
+
+測試刻意寫成「`src` 底下沒有任何 `.py` 內嵌 `docs.google.com`」而不是只檢查
+公告內容：要擋的是「下次又有人貼一份網址進去」，不只是這一處。
 
 ---
 
 ## 建議的下一批處理順序
 
-**P0 與 P1 已全數結案**（P0-7、P1-12 為評估後決定不處理）。
-第九輪之後剩下 **5 項**，全都不會造成資料錯誤或服務中斷。
+**P0、P1、P2 已全數結案**（P0-7、P1-12 為評估後決定不處理）。
+第十輪之後，這份清單上只剩 **1 項**：
 
-第九輪之後的建議順序：
+1. **P3-34**（OAuth 的 `state` CSRF 缺口）——它一直排在最後不是因為最不重要，
+   而是因為它**不是純程式改動**：要補得三件一起做——產生隨機 state、放進頻道主
+   手動貼的授權網址、回來時比對。那會改動頻道主的操作流程，需要先確認要怎麼改。
+   缺口已在 `oauth/server.py` 的程式碼中明確註明。
 
-1. **P2-22**（config 沒有 schema 驗證）——剩下五項裡**唯一還會「靜默失效」的**：
-   `vip_system` 的 `c.get("enabled")` 沒有 default，key 打錯就是 `None`，
-   整個 VIP 功能無聲停用。這類 bug 的特徵是「等到有人回報才知道」，
-   而回報的通道是 Twitch 聊天室
-2. **P2-21、P3-36**——`_SingletonMeta` 重複七份、上線公告的指令集網址硬編碼。
-   兩件都是十幾行的整理，沒有行為風險；P3-36 有實際的兩處不同步風險
-3. **P3-35**（時區不一致）——`task_scheduler` 用本機時區，其餘用 UTC+8。
-   目前都在同一台機器上所以看不出來，但它是「哪天搬機器才會爆」的那種
-4. **P3-34**（OAuth 的 `state` CSRF 缺口）——排最後不是因為最不重要，而是因為
-   它要改動頻道主手動執行的授權流程（產生 state、貼進網址、回來比對三件一起做），
-   不是純程式改動
+清單快見底了，所以接下來值得看的是**這份文件以外**的三處：
 
-> **本 repo 之外但最該做的一件事**：四個微服務都沒有版本控管（見 P3-32 的查證發現）。以「壞掉的代價」來排，這件事比上面任何一項都嚴重。
+**一、`project_report.html` 的優化建議**（初次健檢的 21 條，和 P 編號是兩套
+獨立系統）還有 6 條沒結案。最值得看的是那條 `sec/high`
+「指令表可動態載入任意模組函數」——嚴格說是信任邊界問題：能編輯試算表的人
+等於能執行專案內任意函式。實務上只有頻道主能編輯，所以它一直沒被排上來；
+真要處理就是加模組白名單。其餘是 VIP 名額計算撈回整張表、twitchio 2.x 已 EOL、
+YouTube 歌單快取無失效機制、無自動重連（依營運決策刻意不做）。
+
+**二、知道有問題但需要微服務配合的**：P2-23 的並行扣款——兩個流程同時扣款
+仍可能把 `gold` 扣成負數。要解得由 `mongo-atlas-svc` 支援條件式更新並回傳
+`matched_count`，那是 Go 那邊的工程。
+
+**三、還沒實測的**：P0-3「他人兌換忠誠點數收不到事件」已修掉 EventSub 物件
+被 GC 的疑似成因，但**還沒在正式頻道驗證**。下次開台請人兌換一次就能確認。
+
+> **本 repo 之外但依「壞掉的代價」排在所有項目之前**：四個微服務與
+> n8n 的設定資料夾（`C:\Dev\Docker\n8n`）都沒有版本控管（見 P3-32 的查證發現）。
 
 > 第八輪之後**已經沒有「有真邏輯卻零覆蓋」的模組**（原本唯一的那支 `gpt_chat_session.py` 隨 AI 路徑收斂一併移除），所以補測試不再是第一順位。
-
-> 目前唯一還「知道有問題但沒解」的是 P2-23 的並行扣款：兩個流程同時扣款仍可能把 `gold` 扣成負數。
-> 要解需要微服務端支援條件式更新並回傳 `matched_count`，那是微服務那邊的工程。
 
 ---
 
@@ -1088,7 +1204,7 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 
 # 附錄 B｜測試覆蓋率現況
 
-`uv run pytest --cov` — **338 項測試，整體 75%**（1786 敘述句中 438 未覆蓋）。
+`uv run pytest --cov` — **388 項測試，整體 77%**（1779 敘述句中 404 未覆蓋）。
 各模組結尾 `if __name__ == "__main__":` 的手動試跑區塊不列入計算，那不是產品路徑。
 （`tttest.py` 的排除設定已隨該檔於第九輪刪除而移除，見 P2-28。）
 
@@ -1096,11 +1212,17 @@ grep STREAM-EVENT logs/tm_twitch_bot.log
 
 | 層級 | 模組 | 覆蓋率 |
 | --- | --- | --- |
-| **完全覆蓋**（歷次修過的高風險模組） | `chat_sender`、`tm_ai_agent`、`n8n_ai_agent`、`gacha_handler`、`yaml_utils`、`error_utils`、`sheet_utils`、`sheet_reloader`、`daily_food_picker`、`daily_meme_picker` | 100% |
-| **高** | `log_utils` 96%、`token_manager` 95%、`rank_system` 94%、`guess_number_game` 93%、`role_system` 92%、`greeter` 91%、`message_controller` 91% | 91–96% |
-| **中** | `command_dispatcher` 89%、`level_and_job_system` 88%、`http_utils` 86%、`gold_rush_game` 83%、`vip_system` 82%、`task_scheduler` 79% | 79–89% |
-| **偏低** | `probability_utils` 75%、`openai` 73%、`mongo_atlas` 72%、`duel` 65%、`google_sheets` 65%、`main` 32%、`twitch_vips_api` 24% | 24–75% |
-| **零覆蓋** | `youtube`、`call_timer`、`dump_obj_utils` | 0% |
+| **完全覆蓋**（歷次修過的高風險模組） | `chat_sender`、`tm_ai_agent`、`n8n_ai_agent`、`gacha_handler`、`yaml_utils`、`error_utils`、`sheet_utils`、`sheet_reloader`、`singleton`、`time_utils`、`greeter`、`daily_food_picker`、`daily_meme_picker` | 100% |
+| **高** | `log_utils` 96%、`token_manager` 95%、`rank_system` 94%、`guess_number_game` 92%、`role_system` 92%、`message_controller` 91% | 91–96% |
+| **中** | `command_dispatcher` 89%、`level_and_job_system` 88%、`http_utils` 86%、`task_scheduler` 83%、`gold_rush_game` 81%、`vip_system` 80% | 80–89% |
+| **偏低** | `probability_utils` 75%、`mongo_atlas` 65%、`duel` 65%、`openai` 62%、`google_sheets` 54%、`youtube` 41%、`main` 32%、`twitch_vips_api` 24% | 24–75% |
+| **零覆蓋** | `call_timer`、`dump_obj_utils` | 0% |
+
+> **注意四個 client 的百分比「掉了」**：`google_sheets` 65%→54%、`openai` 73%→62%、
+> `mongo_atlas` 72%→65%。它們**沒有任何行為變化，未覆蓋的行數一行都沒變**——
+> 是 P2-21 把每支裡那 9 行「一定會被覆蓋到的」metaclass 樣板搬走了，分母變小，
+> 比例就掉。這正好說明覆蓋率是個比例：刪掉已覆蓋的樣板會讓數字變差，
+> 而那是好事。看絕對的未覆蓋行數（13 / 8 / 12，都沒變）才看得出真相。
 
 ## 怎麼看這些數字
 

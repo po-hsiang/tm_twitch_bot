@@ -169,6 +169,8 @@ tm_twitch_bot/
 │       ├── log_utils.py            # Logger（主控台彩色 + 檔案輪替）
 │       ├── probability_utils.py    # 加權隨機
 │       ├── sheet_utils.py          # 試算表攤平（哪張表有標題列寫在這裡）
+│       ├── singleton.py           # 共用的單例 metaclass（八個類別都用它）
+│       ├── time_utils.py          # 全專案唯一的「現在幾點」出口（一律 UTC+8）
 │       └── ...
 └── tests/                      # pytest 測試（全離線，不需啟動微服務）
     ├── conftest.py                 # 假環境變數與共用 fixture
@@ -195,6 +197,8 @@ tm_twitch_bot/
     ├── test_config_loading.py
     ├── test_sheet_reloader.py
     ├── test_sheet_utils.py
+    ├── test_singleton.py
+    ├── test_time_utils.py
     └── test_log_utils.py
 ```
 
@@ -376,9 +380,9 @@ MongoDB Atlas（經由 `:9093` 服務代理）使用的 Collections：
 uv run pytest
 ```
 
-目前 338 項測試，約 0.5 秒跑完，整體覆蓋率 75%（`uv run pytest --cov`）。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
+目前 388 項測試，約 0.6 秒跑完，整體覆蓋率 77%（`uv run pytest --cov`）。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、同頻道排隊、七種失敗模式）、`guess_number_game` 與 `gacha_handler`（金幣邊界與設定表健檢）、`token_manager`（token 寫回順序）、`duel`（模型輸出驗證與勝者比對）、`yaml_utils`（哪些環境變數是硬性要求、哪些是選填）、`sheet_reloader`（熱重載的權限、失敗隔離、以及「重載失敗不會讓 Bot 變成沒有指令」）、`sheet_utils`（三張內容表各自該不該跳標題列）。
+覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、同頻道排隊、七種失敗模式）、`guess_number_game` 與 `gacha_handler`（金幣邊界與設定表健檢）、`token_manager`（token 寫回順序）、`duel`（模型輸出驗證與勝者比對）、`yaml_utils`（哪些環境變數是硬性要求、哪些是選填）、`sheet_reloader`（熱重載的權限、失敗隔離、以及「重載失敗不會讓 Bot 變成沒有指令」）、`sheet_utils`（三張內容表各自該不該跳標題列）、`yaml_utils`（設定檔的 schema 驗證：缺 key、型別錯、空值、未宣告欄位）、`singleton`（八個單例共用一份 metaclass，含巢狀建立不會死鎖）、`time_utils`（全專案的時間一律 UTC+8）。
 
 覆蓋率的分層解讀（哪些該補、哪些刻意不補）見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 附錄 B。
 
@@ -405,6 +409,13 @@ uv run pytest
 
 ## 注意事項
 
+- **設定檔在啟動時會驗過一遍**：`config_common.yaml` 有 schema（`utils/yaml_utils.py` 的
+  `_SCHEMA`），缺欄位、型別錯、值是空的都會**直接不啟動**，並一次列出所有問題。
+  這是刻意的：以前 `vip_system` 的 key 打錯會讓整個 VIP 功能靜默停用，沒有任何警告
+  （CODE_REVIEW P2-22）。新增設定時記得一起補宣告——沒補會有 warning，CI 也會失敗。
+- **時間一律台灣時間**：所有「現在幾點」都走 `utils/time_utils.py`（固定 UTC+8）。
+  寫進 MongoDB 的時間戳都帶 `+08:00`。不要再用 `datetime.now()` 或 `date.today()`——
+  那會跟著機器的時區跑，搬一台機器就會讓 VIP 到期日整天算錯（CODE_REVIEW P3-35）。
 - **機密管理**：所有憑證存於 `.env`（已列入 `.gitignore`）。請勿把 `.env` 分享給任何人；懷疑外洩時請立即輪替 Twitch Client Secret 與 OpenAI API Key。
 - **啟動順序**：Google Sheets 的指令集與轉職表在 Bot 啟動的 bootstrap 階段載入（其餘資料為首次使用時惰性載入）。**四個微服務任何一個沒開都不會擋住啟動**：9091 沒開時 Bot 會降級上線（沒有 `!` 指令，但經驗值、升級、`!排行`、遊戲、VIP 掃描照常），並在聊天室公告，之後每 5 分鐘自動重試，服務開起來就會恢復；9092／9093／9094 沒開則只影響對應指令。單純 import 模組（開發、測試）不需要任何微服務。
 - **非同步 HTTP**：所有對微服務與 Twitch Helix 的請求都走共用的 `httpx.AsyncClient`，重試等待不會阻塞事件圈。

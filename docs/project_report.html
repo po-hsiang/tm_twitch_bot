@@ -533,11 +533,11 @@
       <h3>專 案 快 照</h3>
       <ul class="meta-list">
         <li><span class="k">服務頻道</span><span class="v hl">twitch.tv/tigermeowtw</span></li>
-        <li><span class="k">Python 模組</span><span class="v">29 個（src/）</span></li>
+        <li><span class="k">Python 模組</span><span class="v">31 個（src/）</span></li>
         <li><span class="k">外部服務依賴</span><span class="v">本機 4 個（:9091~:9094）+ n8n AI Agent</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">338 項（全部離線，覆蓋率 75%）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">388 項（全部離線，覆蓋率 77%）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -1046,7 +1046,7 @@
       <p>
         依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
         <br>
-        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-21，第九輪後）：共 21 項，15 項已修正、2 項部分處理。此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；第七輪另有 5 項新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42）僅記錄在該文件，皆已修正。</span>
+        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-21，第十輪後）：共 21 項，16 項已修正、2 項部分處理。此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；第七輪另有 5 項新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42）僅記錄在該文件，皆已修正。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
       </p>
     </div>
@@ -1376,10 +1376,10 @@
      desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。（已補上 graceful shutdown：SIGINT / SIGTERM 會依序取消排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，finally 裡的 sys.exit 也已移除。）",
      fix:"剩下的部分：外層加 supervisor 迴圈搭配指數退避重連。依「開台時手動啟動」的營運決策，這一項已從必要降為加分項——當次開台故障是可接受的。",
      files:["main.py:179","scripts/vip_system.py"]},
-    {cat:"quality", sev:"mid", title:"_SingletonMeta 重複貼了七份",
-     desc:"七個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改七個地方（第八輪隨 gpt_chat_session 移除少了一份）。",
-     fix:"抽出到 utils/singleton.py 供全專案共用。",
-     files:["svc_client/*","games/*","scripts/vip_system.py"]},
+    {cat:"quality", sev:"mid", st:"done", title:"_SingletonMeta 重複貼了八份",
+     desc:"八個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改八個地方。（原本記為七份：第八輪隨 gpt_chat_session 移除少了一份，但後來新增的 n8n_ai_agent 又貼了一份沒被算進去——這剛好證明了「八份都一樣」沒有任何機制保證。）",
+     fix:"第十輪抽到 utils/singleton.py，八處改用共用的 SingletonMeta，八個只為那把鎖而存在的 import threading 一併消失。合併帶來一個新風險：鎖從八把變成一把，而八份各有自己的鎖時「單例 A 的 __init__ 裡建立單例 B」是安全的——共用一把非可重入的 threading.Lock 就是死鎖（整個程式停住、沒有錯誤訊息）。所以共用的那把用 RLock。鎖本身刻意留著：現在確實沒有作用（單例都在 import 階段建立），但代價只有啟動時八次沒有競爭的鎖操作，而哪天有人從 asyncio.to_thread 裡建立單例時它就有意義。測試會驗 type(cls) is SingletonMeta，有人又貼一份就會被抓到。詳見 CODE_REVIEW P2-21。",
+     files:["utils/singleton.py","svc_client/*","games/*","scripts/vip_system.py"]},
     {cat:"quality", sev:"mid", title:"twitchio 2.x 已停止維護",
      desc:"專案同時相依 twitchio 2.x（聊天）與 twitchAPI 4.x（EventSub / Helix）。twitchio 2.x 已 EOL，且兩套件的 token 管理彼此獨立，是刷新不同步問題的根源之一。",
      fix:"評估升級 twitchio 3.x，或統一改用 twitchAPI 內建的 Chat 功能，收斂為單一相依與單一 token 生命週期。",
