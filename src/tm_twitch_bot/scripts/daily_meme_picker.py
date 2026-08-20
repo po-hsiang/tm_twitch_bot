@@ -19,6 +19,15 @@ async def _ensure_pool() -> None:
         )
 
 
+def clear_pool() -> None:
+    """丟掉抓下來的表內容，下一次 !梗 會重抓一次（!reload 會呼叫）。
+
+    刻意不清 meme_cache：「一場開台一則梗」是遊戲規則，不是試算表的快取。
+    也就是說這場已經抽過梗了，重載新增的梗要下一場才看得到。
+    """
+    _meme_pool.clear()
+
+
 async def pick(*args, **kwargs) -> str:
     global meme_cache
     if meme_cache:

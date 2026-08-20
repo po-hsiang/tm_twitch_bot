@@ -6,8 +6,7 @@ from twitchio.ext import commands
 from tm_twitch_bot.scripts.message_controller import handle_message
 from tm_twitch_bot.scripts.task_scheduler import schedule_task
 from tm_twitch_bot.scripts.vip_system import vip_system
-from tm_twitch_bot.scripts import command_dispatcher
-from tm_twitch_bot.scripts import level_and_job_system
+from tm_twitch_bot.scripts import sheet_reloader
 from tm_twitch_bot.utils.http_utils import close_async_client
 from tm_twitch_bot.utils.chat_sender import chat_sender
 from tm_twitch_bot.utils.token_manager import token_manager
@@ -40,10 +39,9 @@ SIGNAL_POLL_SECONDS = 0.5
 
 # 啟動時要從 Google Sheets（9091）載入的設定。
 # key 是給人看的名字，會直接出現在降級公告裡。
-SHEET_LOADERS = {
-    "指令集": command_dispatcher.load_command_set,
-    "轉職表": level_and_job_system.load_job_config,
-}
+# 清單本體在 sheet_reloader，因為 !reload 吃的是同一份（見 P2-26）——
+# 兩邊各自維護一份的話，日後加了第三張表很容易只改到一邊。
+SHEET_LOADERS = sheet_reloader.SHEET_LOADERS
 SHEET_RETRY_SECONDS = 300  # 降級啟動後多久重試一次
 
 

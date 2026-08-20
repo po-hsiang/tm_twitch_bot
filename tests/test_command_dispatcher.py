@@ -9,6 +9,7 @@ import logging
 import pytest
 
 from tm_twitch_bot.scripts import command_dispatcher as cd
+from tm_twitch_bot.scripts import sheet_reloader as sr
 from tm_twitch_bot.scripts.command_dispatcher import dispatch_command
 from tm_twitch_bot.utils.error_utils import StatusCodeError
 
@@ -325,3 +326,65 @@ async def test_signature_inspection_is_cached(dispatch_function):
 
     assert cd._wanted_params.cache_info().misses == 1
     assert cd._wanted_params.cache_info().hits == 4
+
+
+# ===== 內建指令（P2-26 的 !reload）=====
+
+
+@pytest.fixture
+def spy_reload(monkeypatch):
+    """把真正的重載換掉，只驗「有沒有被叫到、拿到什麼」。"""
+    calls: list[object] = []
+
+    async def _fake_reload(*, char=None):
+        calls.append(char)
+        return "✅ 已重新載入"
+
+    monkeypatch.setattr(sr, "reload", _fake_reload)
+    return calls
+
+
+async def test_builtin_reload_works_with_an_empty_command_set(spy_reload):
+    """這是 !reload 存在的主要理由：指令集沒載入成功時最需要它。
+
+    放在試算表上的話就變成「要修的東西壞了，修它的工具也一起壞」。
+    """
+    assert not cd.COMMAND_SET
+
+    reply = await dispatch_command("!reload", char="虎喵")
+
+    assert reply == "✅ 已重新載入"
+    assert spy_reload == ["虎喵"]  # context 有照著參數名注入
+
+
+async def test_builtin_reload_beats_a_sheet_row_with_the_same_name(
+    spy_reload, install_commands
+):
+    """修復工具不該被壞掉的那張表關掉，所以內建的刻意蓋過試算表。"""
+    install_commands([["!reload", "text", "試算表上的假 reload"]])
+
+    assert await dispatch_command("!reload", char="虎喵") == "✅ 已重新載入"
+    assert spy_reload == ["虎喵"]
+
+
+@pytest.mark.parametrize("user_input", ["!reload", "!RELOAD", "！reload", "  !ReLoAd  "])
+async def test_builtin_reload_normalizes_like_every_other_command(
+    spy_reload, user_input
+):
+    """全形驚嘆號、大小寫、前後空白都要和一般指令一樣處理。"""
+    assert await dispatch_command(user_input, char="虎喵") == "✅ 已重新載入"
+
+
+async def test_a_sentence_containing_reload_does_not_trigger_it(
+    spy_reload, install_commands
+):
+    """內建指令只認驚嘆號開頭，不參與無驚嘆號的關鍵字掃描。"""
+    install_commands([["!英雄", "text", "英雄榜"]])
+
+    assert await dispatch_command("我剛剛 reload 了一下", char="虎喵") == ""
+    assert spy_reload == []
+
+
+async def test_builtin_reload_is_the_only_hardcoded_command():
+    """硬寫在程式裡的指令是例外，不是慣例——多一個就要多一個理由。"""
+    assert list(cd.BUILTIN_COMMANDS) == ["!RELOAD"]

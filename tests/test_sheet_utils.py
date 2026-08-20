@@ -68,15 +68,20 @@ def _reset_pools():
     """三支抽取器的池子與快取都是模組級狀態，測試之間必須隔離。"""
 
     def _clear():
-        daily_food_picker._food_pool.clear()
+        daily_food_picker.clear_pool()
         daily_food_picker.food_cache.clear()
-        daily_meme_picker._meme_pool.clear()
+        daily_meme_picker.clear_pool()
         daily_meme_picker.meme_cache = ""
-        greeter.adventure_dialogue_pool.clear()
+        greeter.clear_pool()
 
     _clear()
     yield
     _clear()
+
+
+class FakeChar:
+    def __init__(self, user_id: str = "u1"):
+        self.user_id = user_id
 
 
 async def test_food_sheet_drops_its_category_header(monkeypatch, sheet_stub):
@@ -132,3 +137,55 @@ async def test_adventure_sheet_keeps_its_first_row(monkeypatch, sheet_stub):
     await greeter._ensure_dialogue_pool()
 
     assert greeter.adventure_dialogue_pool == ["第一句", "第二句"]
+
+
+# ===== clear_pool 的界線（P2-26 的 !reload 會呼叫它們）=====
+
+
+async def test_clearing_the_food_pool_does_not_reroll_anyone(monkeypatch, sheet_stub):
+    """「一人一餐」是遊戲規則，不是試算表的快取。
+
+    連 food_cache 一起清，!reload 就變成重骰按鈕了。
+    """
+    get_sheet_data, calls = sheet_stub({"吃啥": [["分類"], ["滷肉飯"]]})
+    monkeypatch.setattr(
+        daily_food_picker.google_sheets_client, "get_sheet_data", get_sheet_data
+    )
+    char = FakeChar()
+
+    first = await daily_food_picker.pick(char=char)
+    daily_food_picker.clear_pool()
+
+    assert daily_food_picker._food_pool == []  # 表內容放掉了
+    assert await daily_food_picker.pick(char=char) == first  # 但這個人的餐沒變
+    assert calls == ["吃啥"]  # 而且不必再打一次 API
+
+
+async def test_this_streams_meme_survives_a_reload(monkeypatch, sheet_stub):
+    """「一場開台一則梗」是遊戲規則，重載不會換掉已經抽出來的那則。
+
+    也就是說：這場抽過梗之後才新增的梗，要下一場才看得到。
+    這是刻意的取捨——不然 !reload 就變成重抽按鈕了。
+    """
+    get_sheet_data, _ = sheet_stub({"酷酷的諧音梗": [["原本的梗"]]})
+    monkeypatch.setattr(
+        daily_meme_picker.google_sheets_client, "get_sheet_data", get_sheet_data
+    )
+
+    first = await daily_meme_picker.pick()
+    assert first == "原本的梗"
+
+    daily_meme_picker.clear_pool()
+
+    assert daily_meme_picker._meme_pool == []  # 表內容放掉了
+    assert await daily_meme_picker.pick() == first  # 但這場的梗沒變
+
+
+def test_clearing_the_adventure_pool_does_not_re_greet_everyone():
+    """who_arrived 是「一場開台跟每個人打一次招呼」的規則，不是表的快取。"""
+    greeter.who_arrived.add("u1")
+
+    greeter.clear_pool()
+
+    assert greeter.adventure_dialogue_pool == []
+    assert "u1" in greeter.who_arrived

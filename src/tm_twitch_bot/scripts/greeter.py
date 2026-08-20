@@ -24,6 +24,15 @@ async def _ensure_dialogue_pool() -> None:
         logger.info(f"冒險台詞載入完成，共 {len(adventure_dialogue_pool)} 句")
 
 
+def clear_pool() -> None:
+    """丟掉抓下來的台詞，下一次有人第一次發言時會重抓（!reload 會呼叫）。
+
+    刻意不清 who_arrived：那是「一場開台跟每個人打一次招呼」的規則，
+    不是試算表的快取。連它一起清，全場的人會被重新打一次招呼。
+    """
+    adventure_dialogue_pool.clear()
+
+
 async def greet_user(user_id) -> Optional[str]:
 
     if user_id in who_arrived:

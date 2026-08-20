@@ -39,6 +39,20 @@ async def load_command_set() -> None:
     logger.info(f"指令集載入完成，共 {len(COMMAND_SET)} 筆")
 
 
+# ===== 硬寫在程式裡的指令 =====
+#
+# 全專案唯一一個不是從試算表來的指令。理由很具體：!reload 是修復工具，
+# 而「指令集沒載入成功」正是最需要它的時候——把它放在試算表上，
+# 就變成「要修的東西壞了，修它的工具也一起壞」。
+#
+# 值刻意寫成 qualname 字串而不是 import 進來的函式：sheet_reloader 必須
+# import command_dispatcher（它要重載指令集），反過來 import 就成了循環。
+# 走 _load_function 這條既有的路，順便連參數注入與例外收斂都是同一套。
+BUILTIN_COMMANDS: dict[str, tuple[str, str]] = {
+    "!RELOAD": ("function", "tm_twitch_bot.scripts.sheet_reloader.reload"),
+}
+
+
 # 給觀眾看的制式訊息。細節一律只進 log，不進聊天室——
 # 內部例外訊息會夾帶微服務網址、模組路徑等資訊，那是不該公開的內部拓樸。
 GENERIC_ERROR_REPLY = "⚠️ 這個指令暫時出了點問題，稍後再試試看 tigerm24Cry"
@@ -154,6 +168,18 @@ def _load_function(qualname: str):
         raise ValueError(f"模組 {module_name} 找不到函式 {func_name}()") from e
 
 
+def clear_function_cache() -> None:
+    """放掉已經綁好的指令函式（重載指令集時呼叫）。
+
+    這**不是**為了讓改過的程式生效——那需要 importlib.reload，而這個專案
+    有七個單例，reload 會生出第二份類別與第二個實例（見 sheet_reloader 的說明）。
+    這裡要的是「快取不能比它建立時依據的那張表活得久」：從表上刪掉的指令，
+    它綁住的函式與簽章也該一起放掉。
+    """
+    _load_function.cache_clear()
+    _wanted_params.cache_clear()
+
+
 # ===== 共通處理入口 (判別指令類型) =====
 
 
@@ -188,14 +214,6 @@ async def dispatch_command(user_input: str, **context) -> Optional[str]:
     if not user_input:
         return ""
 
-    if not COMMAND_SET:
-        # 指令集沒載入成功（多半是 Google Sheets 微服務沒開）。
-        # 這裡刻意「不」補載入：重試是 main.py 排程的工作。
-        # 壓在每一則訊息上的話，服務沒開時每則都要耗掉一輪重試與退避，
-        # 整個聊天室都會變慢；失敗還會讓這則訊息連招呼與獎勵都拿不到。
-        logger.warning(f"指令集尚未載入，略過這次派發：{user_input}")
-        return ""
-
     normalized = user_input.replace("！", "!").strip()  # 把全形驚嘆號換成半形，並 strip
 
     try:
@@ -207,6 +225,21 @@ async def dispatch_command(user_input: str, **context) -> Optional[str]:
     head, *tail = tokens
     head_up = head.upper()  # head 代表最前面的指令
     raw_tail_text = " ".join(tail)  # tail 則是後面所有字串依空格分割後裝進 list
+
+    # ===== 內建指令 =====
+    # 刻意排在 COMMAND_SET 的檢查之前：指令集載入失敗時 !reload 仍然要能用。
+    # 也刻意蓋過試算表上的同名列——修復工具不該被壞掉的那張表關掉。
+    builtin = BUILTIN_COMMANDS.get(head_up)
+    if builtin:
+        return await _handle_entry(*builtin, tail, raw_tail_text, context)
+
+    if not COMMAND_SET:
+        # 指令集沒載入成功（多半是 Google Sheets 微服務沒開）。
+        # 這裡刻意「不」補載入：重試是 main.py 排程的工作。
+        # 壓在每一則訊息上的話，服務沒開時每則都要耗掉一輪重試與退避，
+        # 整個聊天室都會變慢；失敗還會讓這則訊息連招呼與獎勵都拿不到。
+        logger.warning(f"指令集尚未載入，略過這次派發：{user_input}")
+        return ""
 
     # ===== 驚嘆號指令 =====
     if head.startswith("!"):

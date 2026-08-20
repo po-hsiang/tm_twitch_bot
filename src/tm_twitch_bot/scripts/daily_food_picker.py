@@ -15,6 +15,15 @@ async def _ensure_pool() -> None:
         _food_pool.extend(collect_cells(raw_food_data, skip_header=True))
 
 
+def clear_pool() -> None:
+    """丟掉抓下來的表內容，下一次 !吃 會重抓一次（!reload 會呼叫）。
+
+    刻意不清 food_cache：「一人一餐」是遊戲規則，不是試算表的快取。
+    連它一起清，!reload 就變成重骰按鈕了。
+    """
+    _food_pool.clear()
+
+
 async def pick(*args, **kwargs) -> str:
     char = kwargs.get("char")
 
