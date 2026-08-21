@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
-from tm_twitch_bot.utils.yaml_utils import config
+from tm_twitch_bot.config.loader import config
 from tm_twitch_bot.utils.log_utils import logger
 import uvicorn
 import httpx

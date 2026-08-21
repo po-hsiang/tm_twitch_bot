@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tm_twitch_bot.utils import yaml_utils
+from tm_twitch_bot.config import loader
 
 
 # ===== 硬性要求 =====
@@ -35,7 +35,7 @@ def test_twitch_credentials_stop_startup_when_missing(monkeypatch, key):
     monkeypatch.delenv(key, raising=False)
 
     with pytest.raises(RuntimeError) as exc:
-        yaml_utils.load_yaml()
+        loader.load_yaml()
 
     assert key in str(exc.value)  # 錯誤訊息要講清楚缺哪一個
 
@@ -44,7 +44,7 @@ def test_the_error_message_points_at_the_env_file(monkeypatch):
     monkeypatch.delenv("TWITCH_CLIENT_ID", raising=False)
 
     with pytest.raises(RuntimeError) as exc:
-        yaml_utils.load_yaml()
+        loader.load_yaml()
 
     assert ".env" in str(exc.value)
 
@@ -60,7 +60,7 @@ def test_a_missing_openai_key_does_not_stop_startup(monkeypatch, caplog):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     with caplog.at_level(logging.WARNING):
-        cfg = yaml_utils.load_yaml()
+        cfg = loader.load_yaml()
 
     assert cfg["openai"]["api_key"] == ""  # 空字串，不是拋例外
     assert "OPENAI_API_KEY" in caplog.text  # 但一定要留下痕跡
@@ -71,7 +71,7 @@ def test_a_missing_agent_secret_does_not_stop_startup(monkeypatch, caplog):
     monkeypatch.delenv("TM_AI_AGENT_SECRET", raising=False)
 
     with caplog.at_level(logging.WARNING):
-        cfg = yaml_utils.load_yaml()
+        cfg = loader.load_yaml()
 
     assert cfg["tm_ai_agent"]["webhook_secret"] == ""
     assert "TM_AI_AGENT_SECRET" in caplog.text
@@ -82,7 +82,7 @@ def test_both_optional_keys_missing_still_boots(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("TM_AI_AGENT_SECRET", raising=False)
 
-    cfg = yaml_utils.load_yaml()
+    cfg = loader.load_yaml()
 
     assert cfg["twitch"]["channel"]  # 設定本體照常載入
 
@@ -94,7 +94,7 @@ def test_secrets_come_from_the_env_not_the_yaml_file():
     """YAML 進版控，機敏值一律只從 .env 來。"""
     import io
 
-    raw = io.open(yaml_utils.CONFIG_COMMON_PATH, encoding="utf-8").read()
+    raw = io.open(loader.CONFIG_COMMON_PATH, encoding="utf-8").read()
 
     for forbidden in ("client_secret", "access_token", "refresh_token", "api_key", "webhook_secret"):
         assert f"{forbidden}:" not in raw, f"{forbidden} 不該出現在 config_common.yaml"
@@ -110,7 +110,7 @@ def test_secrets_come_from_the_env_not_the_yaml_file():
 @pytest.fixture
 def raw_yaml():
     """config_common.yaml 的原始內容（還沒合併 .env 的那份）。"""
-    return yaml.safe_load(yaml_utils.CONFIG_COMMON_PATH.read_text(encoding="utf-8"))
+    return yaml.safe_load(loader.CONFIG_COMMON_PATH.read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -122,15 +122,15 @@ def load_with(monkeypatch, tmp_path):
         path.write_text(
             yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8"
         )
-        monkeypatch.setattr(yaml_utils, "CONFIG_COMMON_PATH", path)
-        return yaml_utils.load_yaml()
+        monkeypatch.setattr(loader, "CONFIG_COMMON_PATH", path)
+        return loader.load_yaml()
 
     return _load
 
 
 def test_the_real_config_passes_the_schema(raw_yaml):
     """線上那份設定檔本身必須是合法的——否則下面的測試都沒有意義。"""
-    assert yaml_utils.validate_config(raw_yaml) == []
+    assert loader.validate_config(raw_yaml) == []
 
 
 def test_the_schema_covers_every_key_in_the_real_config(raw_yaml):
@@ -139,15 +139,15 @@ def test_the_schema_covers_every_key_in_the_real_config(raw_yaml):
     刻意讓 CI 失敗而不是讓 Bot 起不來——那時人還坐在電腦前，
     而開台時多一個沒宣告的 key 不會讓任何功能壞掉。
     """
-    unknown = yaml_utils.unknown_config_keys(raw_yaml)
-    assert unknown == [], f"這些欄位還沒宣告在 yaml_utils._SCHEMA：{unknown}"
+    unknown = loader.unknown_config_keys(raw_yaml)
+    assert unknown == [], f"這些欄位還沒宣告在 loader._SCHEMA：{unknown}"
 
 
 def test_a_missing_key_is_reported_by_name(raw_yaml):
     cfg = copy.deepcopy(raw_yaml)
     del cfg["vip_system"]["enabled"]
 
-    problems = yaml_utils.validate_config(cfg)
+    problems = loader.validate_config(cfg)
 
     assert any("vip_system.enabled" in p for p in problems)
 
@@ -156,7 +156,7 @@ def test_a_whole_missing_section_is_reported(raw_yaml):
     cfg = copy.deepcopy(raw_yaml)
     del cfg["vip_system"]
 
-    problems = yaml_utils.validate_config(cfg)
+    problems = loader.validate_config(cfg)
 
     assert len(problems) == 4  # 這一節的四個欄位都要各自被點名
     assert all("vip_system." in p for p in problems)
@@ -166,7 +166,7 @@ def test_a_wrong_type_is_reported_with_both_types(raw_yaml):
     cfg = copy.deepcopy(raw_yaml)
     cfg["vip_system"]["gold_cost"] = "一百"
 
-    problems = yaml_utils.validate_config(cfg)
+    problems = loader.validate_config(cfg)
 
     assert len(problems) == 1
     assert "gold_cost" in problems[0]
@@ -181,7 +181,7 @@ def test_a_bool_is_not_accepted_as_an_int(raw_yaml):
     cfg = copy.deepcopy(raw_yaml)
     cfg["vip_system"]["gold_cost"] = True
 
-    problems = yaml_utils.validate_config(cfg)
+    problems = loader.validate_config(cfg)
 
     assert len(problems) == 1
     assert "bool" in problems[0]
@@ -199,7 +199,7 @@ def test_an_empty_string_is_as_bad_as_a_missing_key(raw_yaml, path, empty_value)
     cfg = copy.deepcopy(raw_yaml)
     cfg[path[0]][path[1]] = empty_value
 
-    problems = yaml_utils.validate_config(cfg)
+    problems = loader.validate_config(cfg)
 
     assert len(problems) == 1
     assert "不能是空的" in problems[0]
@@ -210,7 +210,7 @@ def test_an_empty_admin_list_is_rejected(raw_yaml):
     cfg = copy.deepcopy(raw_yaml)
     cfg["admin_user_id"] = []
 
-    problems = yaml_utils.validate_config(cfg)
+    problems = loader.validate_config(cfg)
 
     assert any("admin_user_id" in p for p in problems)
 
@@ -222,7 +222,7 @@ def test_every_problem_is_reported_at_once(raw_yaml):
     cfg["vip_system"]["vip_cap"] = "五十一"
     cfg["youtube"]["svc_url"] = ""
 
-    problems = yaml_utils.validate_config(cfg)
+    problems = loader.validate_config(cfg)
 
     assert len(problems) == 3
 
@@ -258,7 +258,7 @@ def test_the_vip_section_is_read_strictly(monkeypatch):
     schema 已保證這四個 key 存在，所以「打錯 key」現在會在啟動時就炸，
     而不是等到有人回報「!vip 沒反應」。
     """
-    from tm_twitch_bot.scripts import vip_system as vs
+    from tm_twitch_bot.commands import vip as vs
 
     monkeypatch.setitem(vs.config, "vip_system", {"enabled": True})
 
@@ -277,7 +277,7 @@ def test_no_python_file_hardcodes_the_command_sheet_url():
 
     這條測試比「檢查公告內容」更有效：它擋的是「下次又有人貼一份網址進去」。
     """
-    src_root = Path(yaml_utils.__file__).resolve().parents[1]
+    src_root = Path(loader.__file__).resolve().parents[1]
     offenders = [
         path.relative_to(src_root).as_posix()
         for path in src_root.rglob("*.py")
@@ -288,6 +288,6 @@ def test_no_python_file_hardcodes_the_command_sheet_url():
 
 
 def test_the_announcement_url_comes_from_config():
-    from tm_twitch_bot import main
+    from tm_twitch_bot import bot
 
-    assert main.COMMAND_SHEET_URL == yaml_utils.config["google_sheets"]["sheet_url"]
+    assert bot.COMMAND_SHEET_URL == loader.config["google_sheets"]["sheet_url"]

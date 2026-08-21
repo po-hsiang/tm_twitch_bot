@@ -1,4 +1,4 @@
-from tm_twitch_bot.utils.yaml_utils import config, ENV_PATH
+from tm_twitch_bot.config.loader import config, ENV_PATH
 from tm_twitch_bot.utils.log_utils import logger
 from typing import Callable
 from dotenv import set_key

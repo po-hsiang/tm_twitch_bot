@@ -10,7 +10,7 @@
 
 import pytest
 
-from tm_twitch_bot import main as m
+from tm_twitch_bot import sheet_config as m
 
 
 @pytest.fixture

@@ -1,14 +1,14 @@
 """`mongo_atlas_client.find()` 的回傳契約：永遠是 list，永遠不是 None。
 
-過去這個保證是「每個呼叫端各自負責」，而 rank_system 就漏掉了：
+過去這個保證是「每個呼叫端各自負責」，而 commands/ranking.py 就漏掉了：
 微服務一異常，`!排行` 就會 `enumerate(None)` 直接 TypeError。
 契約收斂到 client 層之後，這裡同時鎖定契約本身與最容易漏的呼叫端。
 """
 
 import pytest
 
-from tm_twitch_bot.scripts import rank_system
-from tm_twitch_bot.svc_client.mongo_atlas import mongo_atlas_client
+from tm_twitch_bot.commands import ranking
+from tm_twitch_bot.clients.mongo_atlas import mongo_atlas_client
 
 
 @pytest.fixture
@@ -61,8 +61,8 @@ async def test_non_dict_response_becomes_empty_list(svc_response):
 async def test_rank_survives_empty_results(svc_response):
     svc_response({"results": None})
 
-    assert await rank_system.top_heroes() == "目前沒有資料…"
-    assert await rank_system.top_richest() == "目前沒有資料…"
+    assert await ranking.top_heroes() == "目前沒有資料…"
+    assert await ranking.top_richest() == "目前沒有資料…"
 
 
 async def test_rank_formats_real_results(svc_response):
@@ -75,7 +75,7 @@ async def test_rank_formats_real_results(svc_response):
         }
     )
 
-    heroes = await rank_system.top_heroes()
+    heroes = await ranking.top_heroes()
 
     assert "1. 甲 | Lv.9 | 騎士" in heroes
     assert "2. 乙 | Lv.5 | 劍士" in heroes

@@ -9,14 +9,14 @@ import threading
 
 import pytest
 
-from tm_twitch_bot.games.gold_rush_game import GoldRushGame, gold_rush_game
-from tm_twitch_bot.games.guess_number_game import GuessNumberGame, guess_number_game
-from tm_twitch_bot.scripts.vip_system import VipSystem, vip_system
-from tm_twitch_bot.svc_client.google_sheets import GoogleSheetsClient, google_sheets_client
-from tm_twitch_bot.svc_client.mongo_atlas import MongoAtlasClient, mongo_atlas_client
-from tm_twitch_bot.svc_client.n8n_ai_agent import N8nAiAgentClient, n8n_ai_agent_client
-from tm_twitch_bot.svc_client.openai import OpenAIClient, openai_client
-from tm_twitch_bot.svc_client.youtube import YouTubeClient, youtube_client
+from tm_twitch_bot.commands.games.gold_rush import GoldRushGame, gold_rush_game
+from tm_twitch_bot.commands.games.guess_number import GuessNumberGame, guess_number_game
+from tm_twitch_bot.commands.vip import VipSystem, vip_system
+from tm_twitch_bot.clients.google_sheets import GoogleSheetsClient, google_sheets_client
+from tm_twitch_bot.clients.mongo_atlas import MongoAtlasClient, mongo_atlas_client
+from tm_twitch_bot.clients.n8n_ai_agent import N8nAiAgentClient, n8n_ai_agent_client
+from tm_twitch_bot.clients.openai import OpenAIClient, openai_client
+from tm_twitch_bot.clients.youtube import YouTubeClient, youtube_client
 from tm_twitch_bot.utils.singleton import SingletonMeta
 
 # 八個真的在用它的類別，以及各模組匯出的那顆實例。

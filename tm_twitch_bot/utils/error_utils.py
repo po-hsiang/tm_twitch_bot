@@ -3,7 +3,7 @@
 # **刻意保留備忘、不是待清的死碼**。見 CODE_REVIEW P2-28。
 
 # from tm_twitch_bot.utils.vault_utils import project_secret
-# from tm_twitch_bot.utils.yaml_utils import config
+# from tm_twitch_bot.config.loader import config
 # from tm_twitch_bot.utils.log_utils import logger
 # import traceback
 # import requests

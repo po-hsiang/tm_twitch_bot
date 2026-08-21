@@ -40,7 +40,7 @@ def _reset_chat_sender():
     順帶重置內部的 asyncio.Lock —— 它會記住第一次使用時的事件圈，
     而 pytest-asyncio 每個測試都給一個新的。
     """
-    from tm_twitch_bot.utils.chat_sender import chat_sender
+    from tm_twitch_bot.chat.sender import chat_sender
 
     chat_sender.reset()
     yield
@@ -53,11 +53,11 @@ def _reset_ai_agent_queue():
 
     Lock 會記住第一次使用時的事件圈，而 pytest-asyncio 每個測試都給一個新的。
     """
-    from tm_twitch_bot.ai_actions import tm_ai_agent
+    from tm_twitch_bot.commands import ai_chat
 
-    tm_ai_agent.reset()
+    ai_chat.reset()
     yield
-    tm_ai_agent.reset()
+    ai_chat.reset()
 
 
 @pytest.fixture

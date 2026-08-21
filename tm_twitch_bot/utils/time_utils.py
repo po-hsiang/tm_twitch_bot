@@ -4,8 +4,8 @@ CODE_REVIEW P3-35：原本三種寫法混在一起——
 
 | 模組 | 原本的寫法 | 時區 |
 | --- | --- | --- |
-| greeter、role_system | `datetime.now(timezone(timedelta(hours=8)))` | 明確 UTC+8 |
-| task_scheduler | `datetime.now()` | 本機 |
+| chat/greeter、model/character | `datetime.now(timezone(timedelta(hours=8)))` | 明確 UTC+8 |
+| scheduler | `datetime.now()` | 本機 |
 | vip_system | `date.today()`、`datetime.now()` | 本機 |
 
 本機剛好就在台灣，所以現在看不出差別。搬到 UTC 機器上會有兩件事出錯，
@@ -23,7 +23,7 @@ CODE_REVIEW P3-35：原本三種寫法混在一起——
 **用固定 +08:00 而不是 `zoneinfo.ZoneInfo("Asia/Taipei")`**：台灣自 1979 年起
 沒有日光節約時間，兩者結果完全相同；而 zoneinfo 在 Windows 上還要多裝 tzdata
 套件，為一個永遠不變的偏移多一個依賴不划算。固定偏移還讓 `.replace(hour=...)`
-這種算法沒有 DST 的邊界問題（見 task_scheduler.seconds_until）。
+這種算法沒有 DST 的邊界問題（見 scheduler.seconds_until）。
 """
 
 from datetime import date, datetime, timedelta, timezone

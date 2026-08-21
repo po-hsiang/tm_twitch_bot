@@ -13,9 +13,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from tm_twitch_bot.scripts import task_scheduler as ts
-from tm_twitch_bot.scripts import vip_system as vs
-from tm_twitch_bot.scripts.role_system import Character
+from tm_twitch_bot import scheduler as ts
+from tm_twitch_bot.commands import vip as vs
+from tm_twitch_bot.model.character import Character
 from tm_twitch_bot.utils.time_utils import TW_TZ, now_tw, now_tw_iso, today_tw
 
 
@@ -52,7 +52,7 @@ def test_taiwan_has_no_dst_so_the_offset_never_changes():
     assert midsummer.utcoffset() == midwinter.utcoffset() == timedelta(hours=8)
 
 
-# ===== 換日排程（task_scheduler.seconds_until）=====
+# ===== 換日排程（scheduler.seconds_until）=====
 
 
 @pytest.mark.parametrize(

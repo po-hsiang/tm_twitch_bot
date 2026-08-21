@@ -8,7 +8,7 @@ import asyncio
 
 import pytest
 
-from tm_twitch_bot.utils import chat_sender as cs
+from tm_twitch_bot.chat import sender as cs
 
 
 class FakeClock:

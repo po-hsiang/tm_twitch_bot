@@ -4,10 +4,10 @@ from datetime import datetime
 
 import pytest
 
-from tm_twitch_bot.scripts import greeter
-from tm_twitch_bot.scripts.greeter import greet_user
+from tm_twitch_bot.chat import greeter
+from tm_twitch_bot.chat.greeter import greet_user
 from tm_twitch_bot.utils.time_utils import TW_TZ
-from tm_twitch_bot.utils.yaml_utils import config
+from tm_twitch_bot.config.loader import config
 
 DIALOGUE_SHEET = {"冒險台詞": [["勇者出現了"]]}
 

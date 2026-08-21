@@ -10,7 +10,8 @@ CODE_REVIEW P2-29：三支抽取器對第一列的處理不一樣，看起來像
 
 import pytest
 
-from tm_twitch_bot.scripts import daily_food_picker, daily_meme_picker, greeter
+from tm_twitch_bot.chat import greeter
+from tm_twitch_bot.commands import food, meme
 from tm_twitch_bot.utils.sheet_utils import collect_cells
 
 
@@ -68,10 +69,10 @@ def _reset_pools():
     """三支抽取器的池子與快取都是模組級狀態，測試之間必須隔離。"""
 
     def _clear():
-        daily_food_picker.clear_pool()
-        daily_food_picker.food_cache.clear()
-        daily_meme_picker.clear_pool()
-        daily_meme_picker.meme_cache = ""
+        food.clear_pool()
+        food.food_cache.clear()
+        meme.clear_pool()
+        meme.meme_cache = ""
         greeter.clear_pool()
 
     _clear()
@@ -88,14 +89,14 @@ async def test_food_sheet_drops_its_category_header(monkeypatch, sheet_stub):
     """「吃啥」第 0 列是分類（飯／麵…），不是餐點——不跳的話會抽到分類名。"""
     get_sheet_data, _ = sheet_stub({"吃啥": [["飯", "麵"], ["滷肉飯", "拉麵"]]})
     monkeypatch.setattr(
-        daily_food_picker.google_sheets_client, "get_sheet_data", get_sheet_data
+        food.google_sheets_client, "get_sheet_data", get_sheet_data
     )
 
-    await daily_food_picker._ensure_pool()
+    await food._ensure_pool()
 
-    assert daily_food_picker._food_pool == ["滷肉飯", "拉麵"]
-    assert "飯" not in daily_food_picker._food_pool
-    assert "麵" not in daily_food_picker._food_pool
+    assert food._food_pool == ["滷肉飯", "拉麵"]
+    assert "飯" not in food._food_pool
+    assert "麵" not in food._food_pool
 
 
 async def test_meme_sheet_keeps_its_first_row(monkeypatch, sheet_stub):
@@ -104,12 +105,12 @@ async def test_meme_sheet_keeps_its_first_row(monkeypatch, sheet_stub):
         {"酷酷的諧音梗": [["第一列的梗"], ["第二列的梗"]]}
     )
     monkeypatch.setattr(
-        daily_meme_picker.google_sheets_client, "get_sheet_data", get_sheet_data
+        meme.google_sheets_client, "get_sheet_data", get_sheet_data
     )
 
-    await daily_meme_picker._ensure_pool()
+    await meme._ensure_pool()
 
-    assert daily_meme_picker._meme_pool == ["第一列的梗", "第二列的梗"]
+    assert meme._meme_pool == ["第一列的梗", "第二列的梗"]
 
 
 async def test_meme_newlines_become_spaces(monkeypatch, sheet_stub):
@@ -119,12 +120,12 @@ async def test_meme_newlines_become_spaces(monkeypatch, sheet_stub):
     """
     get_sheet_data, _ = sheet_stub({"酷酷的諧音梗": [["為什麼？\n因為", ""]]})
     monkeypatch.setattr(
-        daily_meme_picker.google_sheets_client, "get_sheet_data", get_sheet_data
+        meme.google_sheets_client, "get_sheet_data", get_sheet_data
     )
 
-    await daily_meme_picker._ensure_pool()
+    await meme._ensure_pool()
 
-    assert daily_meme_picker._meme_pool == ["為什麼？ 因為"]
+    assert meme._meme_pool == ["為什麼？ 因為"]
 
 
 async def test_adventure_sheet_keeps_its_first_row(monkeypatch, sheet_stub):
@@ -149,15 +150,15 @@ async def test_clearing_the_food_pool_does_not_reroll_anyone(monkeypatch, sheet_
     """
     get_sheet_data, calls = sheet_stub({"吃啥": [["分類"], ["滷肉飯"]]})
     monkeypatch.setattr(
-        daily_food_picker.google_sheets_client, "get_sheet_data", get_sheet_data
+        food.google_sheets_client, "get_sheet_data", get_sheet_data
     )
     char = FakeChar()
 
-    first = await daily_food_picker.pick(char=char)
-    daily_food_picker.clear_pool()
+    first = await food.pick(char=char)
+    food.clear_pool()
 
-    assert daily_food_picker._food_pool == []  # 表內容放掉了
-    assert await daily_food_picker.pick(char=char) == first  # 但這個人的餐沒變
+    assert food._food_pool == []  # 表內容放掉了
+    assert await food.pick(char=char) == first  # 但這個人的餐沒變
     assert calls == ["吃啥"]  # 而且不必再打一次 API
 
 
@@ -169,16 +170,16 @@ async def test_this_streams_meme_survives_a_reload(monkeypatch, sheet_stub):
     """
     get_sheet_data, _ = sheet_stub({"酷酷的諧音梗": [["原本的梗"]]})
     monkeypatch.setattr(
-        daily_meme_picker.google_sheets_client, "get_sheet_data", get_sheet_data
+        meme.google_sheets_client, "get_sheet_data", get_sheet_data
     )
 
-    first = await daily_meme_picker.pick()
+    first = await meme.pick()
     assert first == "原本的梗"
 
-    daily_meme_picker.clear_pool()
+    meme.clear_pool()
 
-    assert daily_meme_picker._meme_pool == []  # 表內容放掉了
-    assert await daily_meme_picker.pick() == first  # 但這場的梗沒變
+    assert meme._meme_pool == []  # 表內容放掉了
+    assert await meme.pick() == first  # 但這場的梗沒變
 
 
 def test_clearing_the_adventure_pool_does_not_re_greet_everyone():

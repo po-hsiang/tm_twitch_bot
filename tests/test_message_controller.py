@@ -8,9 +8,9 @@ import logging
 
 import pytest
 
-from tm_twitch_bot.scripts import message_controller as mc
-from tm_twitch_bot.svc_client.mongo_atlas import mongo_atlas_client
-from tm_twitch_bot.utils.yaml_utils import config
+from tm_twitch_bot.chat import message_controller as mc
+from tm_twitch_bot.clients.mongo_atlas import mongo_atlas_client
+from tm_twitch_bot.config.loader import config
 
 
 class FakeAuthor:

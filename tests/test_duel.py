@@ -7,8 +7,8 @@
 
 import pytest
 
-from tm_twitch_bot.ai_actions import duel
-from tm_twitch_bot.svc_client.openai import openai_client
+from tm_twitch_bot.commands import duel
+from tm_twitch_bot.clients.openai import openai_client
 
 PLAYERS = ("小虎", "阿喵")
 

@@ -32,34 +32,34 @@
 
 ## 功能特色
 
-### 🎮 聊天 RPG 養成（role_system / level_and_job_system）
+### 🎮 聊天 RPG 養成（model/character · model/jobs）
 - 每位觀眾第一次發言自動建立角色（`Character`），欄位含等級、經驗、金幣、職業與六維屬性（STR / AGI / VIT / INT / DEX / LUK）。
 - 發言即獲得經驗與金幣；升級時隨機提升一項屬性。
 - 到達門檻等級（10 等一轉、15 等二轉）自動隨機轉職，職業表由 Google Sheets「轉職表」維護。
-- `!英雄`、`!富翁` 查看等級榜與財富榜（rank_system）。
+- `!英雄`、`!富翁` 查看等級榜與財富榜（commands/ranking）。
 
-### 🎰 小遊戲（games / gacha_handler）
+### 🎰 小遊戲（commands/games · commands/gacha）
 | 遊戲 | 說明 |
 |---|---|
-| 終極密碼（guess_number_game） | 猜 0~1000 之間的數字，每次猜測收費並灌注彩金池，越早猜中基礎獎金越高；30 分鐘沒人猜中就公布答案並流局 |
-| 一桶金（gold_rush_game） | 限時投注，每人上限 10 Gold，結束後依投入比例加權抽出得主獨得全池 |
-| 抽卡（gacha_handler） | 20 Gold 十連抽，抽中稀有表情符號可獲得對應 Gold 回饋 |
+| 終極密碼（commands/games/guess_number） | 猜 0~1000 之間的數字，每次猜測收費並灌注彩金池，越早猜中基礎獎金越高；30 分鐘沒人猜中就公布答案並流局 |
+| 一桶金（commands/games/gold_rush） | 限時投注，每人上限 10 Gold，結束後依投入比例加權抽出得主獨得全池 |
+| 抽卡（commands/gacha） | 20 Gold 十連抽，抽中稀有表情符號可獲得對應 Gold 回饋 |
 
-### 🤖 AI 互動（ai_actions）
-- **AI 問答**（`!GPT` / `!AI` / `!LLM` / `!問`）：轉送到自架 n8n 上的「TM AI Agent」工作流（`tm_twitch_bot.ai_actions.tm_ai_agent.ask`）。人設「虎喵小粉絲」、對話記憶（同頻道共享最近 10 輪）與工具呼叫全都在 n8n 端——模型會自行判斷要不要用工具：台灣熱搜／頭條、網路搜尋、維基百科、計算機、日期計算、統計圖表、虎喵歌單。
+### 🤖 AI 互動（commands/ai_chat · commands/duel）
+- **AI 問答**（`!GPT` / `!AI` / `!LLM` / `!問`）：轉送到自架 n8n 上的「TM AI Agent」工作流（`tm_twitch_bot.commands.ai_chat.ask`）。人設「虎喵小粉絲」、對話記憶（同頻道共享最近 10 輪）與工具呼叫全都在 n8n 端——模型會自行判斷要不要用工具：台灣熱搜／頭條、網路搜尋、維基百科、計算機、日期計算、統計圖表、虎喵歌單。
   > 原本另有一條走 OpenAI 微服務的路徑（`gpt_chat_session.py`），在 n8n 觀察一段時間確認上下文記憶與工具都穩定後已移除。n8n 端換模型不必動這裡，也不用為此維護不同廠商的微服務。
 - `!pk @對象`：取雙方角色數值，由 GPT 以結構化輸出（JSON Schema）生成戲劇化對戰旁白並判定勝負。**這是 OpenAI 微服務（9092）唯一的呼叫端**——n8n 的 Agent 只回純文字，拿不到結構化欄位。
 
-### 👑 VIP 系統（vip_system）
+### 👑 VIP 系統（commands/vip）
 - 用 100 Gold 兌換 31 天頻道 VIP（透過 Twitch Helix API 實際授予徽章）。
 - 名額上限 51 人；到期後由過期掃描（sweep）移除 VIP 並更新資料庫紀錄。
 
-### ⏰ 排程任務（task_scheduler）
+### ⏰ 排程任務（scheduler）
 - 每 30 分鐘提醒喝水、每 45 分鐘隨機開啟一場小遊戲、每日 23:59 換日提醒。
-- 間隔與遊戲時長集中在 `task_scheduler.py` 開頭的具名常數（`WATER_INTERVAL`、`RANDOM_GAME_INTERVAL`、`GOLD_RUSH_DURATION`），營運要調整只有那一區要看。
+- 間隔與遊戲時長集中在 `scheduler.py` 開頭的具名常數（`WATER_INTERVAL`、`RANDOM_GAME_INTERVAL`、`GOLD_RUSH_DURATION`），營運要調整只有那一區要看。
 - 通用的 `TaskScheduler` 支援 interval / daily 兩種任務型態，可註冊多個函數隨機執行其一。
 
-### 💬 聊天品質控管（message_controller）
+### 💬 聊天品質控管（chat/message_controller）
 - 3 秒發言冷卻、重複訊息（洗頻）過濾、機器人帳號忽略。
 - 首次發言依台灣時區給予早安／午安／晚安招呼並贈送獎勵。
 
@@ -73,7 +73,7 @@
 
 ## 系統架構
 
-本專案採 **Bot 主程式 + 本地微服務** 的架構，所有外部資源（Google Sheets、OpenAI、MongoDB Atlas、YouTube）都透過獨立的本地 HTTP 服務代理，Bot 端僅保留輕量的 HTTP Client（`svc_client/`）。另有一條對外的 AI Agent webhook（自架 n8n，經 ngrok 靜態網域）。
+本專案採 **Bot 主程式 + 本地微服務** 的架構，所有外部資源（Google Sheets、OpenAI、MongoDB Atlas、YouTube）都透過獨立的本地 HTTP 服務代理，Bot 端僅保留輕量的 HTTP Client（`clients/`）。另有一條對外的 AI Agent webhook（自架 n8n，經 ngrok 靜態網域）。
 
 ```
                          ┌──────────────────────────────┐
@@ -88,7 +88,7 @@
 │  Token 驗證/刷新 → 事件監聽 → message_controller → dispatcher   │
 └──────┬──────────────┬──────────────┬──────────────┬────────────┘
        │              │              │              │
-   svc_client     svc_client     svc_client     svc_client
+     clients        clients        clients        clients   
        │              │              │              │
 ┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼─────┐ ┌──────▼─────┐
 │GoogleSheets│ │  OpenAI    │ │ MongoDB    │ │  YouTube   │ │ n8n TM AI  │
@@ -108,101 +108,87 @@
 - **twitchAPI**（4.x）：負責 EventSub WebSocket（忠誠點數兌換）與 Helix API（VIP 授予/移除）。
 - **oauth/server.py**：FastAPI 撰寫的 OAuth callback 伺服器（port 8096），用於首次取得 access / refresh token。
 - **Google Sheets 作為 CMS**：指令集、轉職表、吃啥、諧音梗、冒險台詞等內容皆存放於試算表，營運人員可直接編輯。
-- **n8n TM AI Agent**：自架 n8n 上的 AI Agent 工作流，多客戶端共用（Discord bot 也在用）。人設、對話記憶與工具呼叫都在 n8n 端；n8n 會偵測 `channel_id` 的 `twitch:` 前綴並回純文字單行，所以 Bot 這側只負責送齊欄位與排隊，回覆不做任何後處理（換行與長度的協定防線統一在 `utils/chat_sender.py`）。
+- **n8n TM AI Agent**：自架 n8n 上的 AI Agent 工作流，多客戶端共用（Discord bot 也在用）。人設、對話記憶與工具呼叫都在 n8n 端；n8n 會偵測 `channel_id` 的 `twitch:` 前綴並回純文字單行，所以 Bot 這側只負責送齊欄位與排隊，回覆不做任何後處理（換行與長度的協定防線統一在 `chat/sender.py`）。
 
 ---
 
 ## 專案結構
 
 ```
-tm_twitch_bot/
-├── pyproject.toml              # 專案定義（uv 管理，Python >= 3.13）
+tm_twitch_bot/                      ← 專案根目錄
+├── pyproject.toml                  # 專案定義（uv 管理，Python >= 3.13）
 ├── uv.lock
-├── .env                        # 機敏資訊（token / secret / api key），不進版控
-├── .env.example                # .env 範本
-├── .github/workflows/ci.yml    # CI：uv sync + compileall + ruff + pytest
-├── logs/                       # 執行期日誌（輪替，不進版控）
+├── .env                            # 機敏資訊（token / secret / api key），不進版控
+├── .env.example                    # .env 範本
+├── .github/workflows/ci.yml        # CI：uv sync + compileall + ruff + pytest
+├── logs/                           # 執行期日誌（輪替，不進版控）
 ├── docs/
-│   ├── CODE_REVIEW.md          # 程式碼健檢報告（缺陷清單與處置狀態）
-│   ├── SERVICES.md             # 外部服務清單（port／專案位置／端點／影響範圍）
-│   └── project_report.html     # 互動式專案報告（架構圖／流程圖／指令表）
-├── tools/
-│   └── start_services.ps1      # 啟動四個本機微服務並檢查是否真的活著
-├── tm_twitch_bot/
-│   ├── main.py                 # 進入點：Token 驗證/刷新、bootstrap、Bot 啟動
+│   ├── CODE_REVIEW.md              # 程式碼健檢（待處理清單 + 已結案紀錄）
+│   ├── SERVICES.md                 # 外部服務清單（port／位置／端點／掛掉的影響）
+│   ├── IDEAS.md                    # 還沒做的玩法提案
+│   └── project_report.html         # 互動式專案報告（架構圖／流程圖／指令表）
+├── tools/start_services.ps1        # 啟動四個本機微服務並確認它們活著
+├── examples/call_timer.py          # 排程器使用範例（不是產品程式）
+├── tm_twitch_bot/                  ← Python 套件
+│   ├── main.py                     # 進入點：驗 token、bootstrap、關機收尾
+│   ├── bot.py                      # MyBot：twitchio 事件 → chat 管線
+│   ├── scheduler.py                # 通用排程器 + 排程任務定義
+│   ├── sheet_config.py             # 試算表載入（啟動／降級重試／!reload 共用一份清單）
+│   ├── paths.py                    # 專案內的固定路徑，只有這一處
+│   ├── chat/                       # 聊天訊息的進出與派發
+│   │   ├── message_controller.py   #   管線：冷卻／洗頻／獎勵／派發／保證存檔
+│   │   ├── dispatcher.py           #   指令派發（Sheets 設定 + 按參數名注入）
+│   │   ├── greeter.py              #   首次發言招呼
+│   │   └── sender.py               #   唯一發話出口（換行整平／截斷／速率保護）
+│   ├── commands/                   # 觀眾可觸發的功能，試算表只會指向這裡
+│   │   ├── ai_chat.py              #   !gpt / !AI / !LLM / !問
+│   │   ├── duel.py                 #   !pk（AI 對戰旁白）
+│   │   ├── food.py · meme.py       #   !吃 / !梗
+│   │   ├── gacha.py                #   !抽
+│   │   ├── ranking.py              #   !英雄 / !富翁
+│   │   ├── profile.py              #   !INFO
+│   │   ├── songs.py                #   !YT / !找歌
+│   │   ├── vip.py                  #   !vip 兌換 + 到期掃描
+│   │   ├── reload.py               #   !reload（管理員限定）
+│   │   └── games/
+│   │       ├── guess_number.py     #     終極密碼
+│   │       └── gold_rush.py        #     一桶金
+│   ├── model/                      # 全專案共用的業務模型
+│   │   ├── character.py            #   Character：等級／經驗／金幣／職業與存檔
+│   │   └── jobs.py                 #   轉職表解析
+│   ├── clients/                    # 對外 HTTP，一個檔案一個服務
+│   │   ├── google_sheets.py · mongo_atlas.py · youtube.py
+│   │   ├── openai.py               #   只剩 !pk 的結構化輸出在用
+│   │   ├── n8n_ai_agent.py         #   自架 n8n 的 AI Agent webhook
+│   │   └── twitch_vips_api.py      #   直接呼叫 Twitch Helix VIP API
 │   ├── config/
-│   │   └── config_common.yaml  # 非機敏設定（各服務 URL、遊戲參數）
-│   ├── oauth/
-│   │   └── server.py           # FastAPI OAuth callback（首次授權用）
-│   ├── scripts/                # 核心業務邏輯
-│   │   ├── message_controller.py   # 訊息處理管線（冷卻/洗頻/獎勵/派發）
-│   │   ├── command_dispatcher.py   # 指令派發器（Sheets 設定 + 動態載入函數）
-│   │   ├── sheet_reloader.py       # !reload：熱重載五張試算表（管理員限定）
-│   │   ├── role_system.py          # Character 資料模型與 RPG 行為
-│   │   ├── level_and_job_system.py # 轉職表解析
-│   │   ├── rank_system.py          # 排行榜
-│   │   ├── vip_system.py           # VIP 兌換與到期掃描
-│   │   ├── gacha_handler.py        # 抽卡
-│   │   ├── greeter.py              # 首次發言招呼
-│   │   ├── daily_food_picker.py    # !吃
-│   │   ├── daily_meme_picker.py    # !梗
-│   │   ├── task_scheduler.py       # 通用排程器 + 排程任務定義
-│   │   └── call_timer.py           # 排程器使用範例
-│   ├── games/
-│   │   ├── guess_number_game.py    # 終極密碼
-│   │   └── gold_rush_game.py       # 一桶金
-│   ├── ai_actions/
-│   │   ├── tm_ai_agent.py          # AI 問答（轉送 n8n「TM AI Agent」，唯一路徑）
-│   │   └── duel.py                 # !pk AI 對戰旁白
-│   ├── svc_client/             # 對本地微服務/外部 API 的 HTTP Client
-│   │   ├── google_sheets.py
-│   │   ├── openai.py               # 只剩 !pk 的結構化輸出在用
-│   │   ├── mongo_atlas.py
-│   │   ├── youtube.py
-│   │   ├── n8n_ai_agent.py         # 自架 n8n 的 AI Agent webhook
-│   │   └── twitch_vips_api.py      # 直接呼叫 Twitch Helix VIP API
-│   └── utils/
-│       ├── yaml_utils.py           # 設定載入（YAML + .env 合併）
-│       ├── token_manager.py        # Token 唯一來源（刷新後同步記憶體與 .env）
-│       ├── http_utils.py           # 帶重試的非同步 HTTP 請求（httpx.AsyncClient）
-│       ├── chat_sender.py          # 統一發話出口（換行整平 + 長度截斷 + 速率限制）
-│       ├── log_utils.py            # Logger（主控台彩色 + 檔案輪替）
-│       ├── probability_utils.py    # 加權隨機
-│       ├── sheet_utils.py          # 試算表攤平（哪張表有標題列寫在這裡）
-│       ├── singleton.py           # 共用的單例 metaclass（八個類別都用它）
-│       ├── time_utils.py          # 全專案唯一的「現在幾點」出口（一律 UTC+8）
-│       └── ...
-└── tests/                      # pytest 測試（全離線，不需啟動微服務）
-    ├── conftest.py                 # 假環境變數與共用 fixture
-    ├── test_command_dispatcher.py
-    ├── test_greeter.py
-    ├── test_role_system.py
-    ├── test_role_name_lookup.py
-    ├── test_level_and_job_system.py
-    ├── test_message_controller.py
-    ├── test_task_scheduler.py
-    ├── test_vip_system.py
-    ├── test_mongo_find_contract.py
-    ├── test_chat_sender.py
-    ├── test_gold_rush_game.py
-    ├── test_character_persistence.py
-    ├── test_sheet_bootstrap.py
-    ├── test_tm_ai_agent.py
-    ├── test_shutdown.py
-    ├── test_http_utils.py
-    ├── test_guess_number_game.py
-    ├── test_gacha_handler.py
-    ├── test_token_manager.py
-    ├── test_duel.py
-    ├── test_config_loading.py
-    ├── test_sheet_reloader.py
-    ├── test_sheet_utils.py
-    ├── test_singleton.py
-    ├── test_time_utils.py
-    └── test_log_utils.py
+│   │   ├── loader.py               #   設定載入 + 啟動時 schema 驗證
+│   │   └── config_common.yaml      #   非機敏設定（服務 URL、遊戲參數）
+│   ├── utils/                      # 跨切面小工具
+│   │   ├── http_utils.py           #   帶重試的非同步 HTTP（httpx.AsyncClient）
+│   │   ├── token_manager.py        #   Token 唯一來源（刷新後同步記憶體與 .env）
+│   │   ├── log_utils.py            #   Logger（主控台彩色 + 檔案輪替）
+│   │   ├── time_utils.py           #   唯一的「現在幾點」出口（一律 UTC+8）
+│   │   ├── singleton.py            #   共用的單例 metaclass（八個類別都用它）
+│   │   ├── sheet_utils.py          #   試算表攤平（哪張表有標題列寫在這裡）
+│   │   ├── probability_utils.py    #   加權隨機
+│   │   └── error_utils.py          #   StatusCodeError
+│   └── oauth/server.py             # FastAPI OAuth callback（首次授權用）
+└── tests/                          # pytest（全離線，不需啟動微服務）
 ```
 
----
+分層的規則只有三條，看得懂這三條就找得到東西：
+
+1. **`commands/` 是試算表唯一能指向的地方。** 「指令集」工作表把 Python 模組路徑
+   寫在儲存格裡，所以那是一份對外契約——功能收斂在這裡之後，內部怎麼搬都不會
+   再動到那張表（有測試守著這條規則）。功能自己的狀態就住在自己的模組裡。
+2. **`chat/` 只管訊息進出，不管玩法。** 出站訊息一律經過 `chat/sender.py`，
+   它是全專案唯一真的碰到 `channel.send` 的地方。
+3. **`model/` 與 `utils/` 不准反向依賴上層。** 被大家共用的東西放這裡，
+   它們不知道有誰在用。
+
+測試檔與模組同名（`chat/dispatcher.py` ↔ `tests/test_dispatcher.py`），
+所以要找某個模組的測試直接猜檔名就好。
 
 ## 訊息處理流程
 
@@ -217,14 +203,14 @@ tm_twitch_bot/
   → 與上一句重複（洗頻）？──是──▶ 忽略
   → 首次發言？──是──▶ 招呼 + 贈送 3 EXP / 3 Gold
   → 發言獎勵 +1 EXP / +1 Gold（可能觸發升級/轉職廣播）
-  → command_dispatcher 比對指令集
+  → chat/dispatcher 比對指令集
        ├─ text 類型：直接回覆文字
        └─ function 類型：動態 import 並執行對應函數
   → 回覆結果（若有）
   → 角色存檔（MongoDB）
 ```
 
-指令派發規則（`command_dispatcher`）：
+指令派發規則（`chat/dispatcher.py`）：
 1. `!指令`（無參數），例：`!英雄`
 2. `!指令 參數`，例：`!gpt 我帥嗎`
 3. 無驚嘆號關鍵字（句子包含即觸發），例：`帥`
@@ -238,26 +224,26 @@ tm_twitch_bot/
 
 | 指令 | 功能 | 對應模組 |
 |---|---|---|
-| `!INFO` | 查看自己的角色資訊 | `role_system.check` |
-| `!英雄` | 等級排行榜 Top 3 | `rank_system.top_heroes` |
-| `!富翁` | 財富排行榜 Top 3 | `rank_system.top_richest` |
-| `!抽` | 20 Gold 十連抽 | `gacha_handler.gacha` |
-| `!猜 <數字>` | 終極密碼猜數字 | `guess_number_game.guess` |
-| `!投 <金額>` | 一桶金投注 | `gold_rush_game.toss` |
-| `!gpt <問題>`<br>`!AI` / `!LLM` / `!問` | 與 AI 聊天（n8n TM AI Agent，會自行使用工具） | `tm_ai_agent.ask` |
-| `!pk @對象` | AI 旁白 RPG 對戰 | `duel.pk` |
-| `!vip` | 100 Gold 兌換 31 天 VIP | `vip_system.redeem` |
-| `!吃` | 隨機推薦食物 | `daily_food_picker.pick` |
-| `!梗` | 隨機諧音梗 | `daily_meme_picker.pick` |
-| `!YT` | 隨機推薦歌單歌曲 | `youtube.pick` |
-| `!找歌 <關鍵字>` | 搜尋歌單 | `youtube.search_song` |
+| `!INFO` | 查看自己的角色資訊 | `commands/profile.check` |
+| `!英雄` | 等級排行榜 Top 3 | `commands/ranking.top_heroes` |
+| `!富翁` | 財富排行榜 Top 3 | `commands/ranking.top_richest` |
+| `!抽` | 20 Gold 十連抽 | `commands/gacha.gacha` |
+| `!猜 <數字>` | 終極密碼猜數字 | `commands/games/guess_number.guess` |
+| `!投 <金額>` | 一桶金投注 | `commands/games/gold_rush.toss` |
+| `!gpt <問題>`<br>`!AI` / `!LLM` / `!問` | 與 AI 聊天（n8n TM AI Agent，會自行使用工具） | `commands/ai_chat.ask` |
+| `!pk @對象` | AI 旁白 RPG 對戰 | `commands/duel.pk` |
+| `!vip` | 100 Gold 兌換 31 天 VIP | `commands/vip.redeem` |
+| `!吃` | 隨機推薦食物 | `commands/food.pick` |
+| `!梗` | 隨機諧音梗 | `commands/meme.pick` |
+| `!YT` | 隨機推薦歌單歌曲 | `commands/songs.pick` |
+| `!找歌 <關鍵字>` | 搜尋歌單 | `commands/songs.search_song` |
 
 管理員（`admin_user_id`）限定：
 
 | 指令 | 功能 | 對應模組 |
 |---|---|---|
-| `!reload` | 重新拉取五張試算表，不必重開 Bot | `sheet_reloader.reload` |
-| （見下）| 手動開啟終極密碼／一桶金 | `guess_number_game.start`、`gold_rush_game.start` |
+| `!reload` | 重新拉取五張試算表，不必重開 Bot | `commands/reload.reload` |
+| （見下）| 手動開啟終極密碼／一桶金 | `commands/games/*.start` |
 
 `!reload` 是**唯一不從試算表來的指令**，因為它是修復工具——指令集載入失敗時它還是要能用。
 非管理員打了不會有任何回應。
@@ -358,7 +344,7 @@ vip_system:
   days_per_redeem: 31         # 每次兌換天數
 ```
 
-程式載入時（`utils/yaml_utils.py`）會把 `.env` 的機敏值合併進 config dict，既有的 `config["twitch"]["access_token"]` 取用方式不變。
+程式載入時（`config/loader.py`）會把 `.env` 的機敏值合併進 config dict，既有的 `config["twitch"]["access_token"]` 取用方式不變。
 
 ---
 
@@ -382,7 +368,7 @@ uv run pytest
 
 目前 388 項測試，約 0.6 秒跑完，整體覆蓋率 77%（`uv run pytest --cov`）。全部離線執行，不需要啟動任何微服務、也不會讀到真正的 `.env`——`tests/conftest.py` 會在 import 任何專案模組之前塞入假的環境變數（同時把 log 目錄導向系統暫存區，測試不會在專案裡留下檔案）。
 
-覆蓋範圍：`command_dispatcher`（指令派發與分詞）、`greeter`（惰性載入與降級）、`role_system`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出）、`level_and_job_system`（轉職表解析）、`message_controller`（例外保護與保證存檔）、`task_scheduler`（單次失敗不毒死整條排程）、`vip_system`（兌換金流與退款）、`mongo_atlas` + `rank_system`（查詢回傳契約）、`log_utils`（著色不汙染 log 檔）、`http_utils`（重試策略與逾時）、`chat_sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`gold_rush_game`（結算訊息與金流）、`main.shutdown`（收尾順序與單步失敗的容錯）、`main.load_sheet_config`（降級啟動與自動恢復）、`Character.save`（差額更新與並行安全）、`tm_ai_agent`（欄位契約、同頻道排隊、七種失敗模式）、`guess_number_game` 與 `gacha_handler`（金幣邊界與設定表健檢）、`token_manager`（token 寫回順序）、`duel`（模型輸出驗證與勝者比對）、`yaml_utils`（哪些環境變數是硬性要求、哪些是選填）、`sheet_reloader`（熱重載的權限、失敗隔離、以及「重載失敗不會讓 Bot 變成沒有指令」）、`sheet_utils`（三張內容表各自該不該跳標題列）、`yaml_utils`（設定檔的 schema 驗證：缺 key、型別錯、空值、未宣告欄位）、`singleton`（八個單例共用一份 metaclass，含巢狀建立不會死鎖）、`time_utils`（全專案的時間一律 UTC+8）。
+覆蓋範圍：`chat/dispatcher`（指令派發與分詞、重構前舊路徑的相容）、`chat/greeter`（惰性載入、降級、招呼時段）、`chat/sender`（換行整平、速率視窗、長度截斷、塞車丟棄）、`chat/message_controller`（例外保護與保證存檔）、`model/character`（升級／轉職邊界、金幣進出、髒資料追蹤、名稱查詢的 regex 逸出、差額更新與並行安全）、`model/jobs`（轉職表解析）、`commands/vip`（兌換金流與退款）、`commands/ranking` + `clients/mongo_atlas`（查詢回傳契約）、`commands/games/*`（結算訊息、金幣邊界、流局倒數）、`commands/gacha`（設定表健檢）、`commands/ai_chat`（欄位契約、同頻道排隊、七種失敗模式）、`commands/duel`（模型輸出驗證與勝者比對）、`sheet_config`（熱重載的權限、失敗隔離、以及「重載失敗不會讓 Bot 變成沒有指令」）、`scheduler`（單次失敗不毒死整條排程、換日時間算在台灣時區）、`config/loader`（哪些環境變數是硬性要求、schema 的缺 key／型別錯／空值／未宣告欄位）、`utils/`（重試策略與逾時、log 著色不汙染檔案、token 寫回順序、單例含巢狀建立不死鎖、時間一律 UTC+8、試算表該不該跳標題列）、`main.shutdown`（收尾順序與單步失敗的容錯）。
 
 覆蓋率的分層解讀（哪些該補、哪些刻意不補）見 [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) 附錄 B。
 
@@ -409,9 +395,9 @@ uv run pytest
 
 ## 注意事項
 
-- **設定檔在啟動時會驗過一遍**：`config_common.yaml` 有 schema（`utils/yaml_utils.py` 的
+- **設定檔在啟動時會驗過一遍**：`config_common.yaml` 有 schema（`config/loader.py` 的
   `_SCHEMA`），缺欄位、型別錯、值是空的都會**直接不啟動**，並一次列出所有問題。
-  這是刻意的：以前 `vip_system` 的 key 打錯會讓整個 VIP 功能靜默停用，沒有任何警告
+  這是刻意的：以前 `commands/vip.py` 的 key 打錯會讓整個 VIP 功能靜默停用，沒有任何警告
   （CODE_REVIEW P2-22）。新增設定時記得一起補宣告——沒補會有 warning，CI 也會失敗。
 - **時間一律台灣時間**：所有「現在幾點」都走 `utils/time_utils.py`（固定 UTC+8）。
   寫進 MongoDB 的時間戳都帶 `+08:00`。不要再用 `datetime.now()` 或 `date.today()`——
@@ -419,7 +405,7 @@ uv run pytest
 - **機密管理**：所有憑證存於 `.env`（已列入 `.gitignore`）。請勿把 `.env` 分享給任何人；懷疑外洩時請立即輪替 Twitch Client Secret 與 OpenAI API Key。
 - **啟動順序**：Google Sheets 的指令集與轉職表在 Bot 啟動的 bootstrap 階段載入（其餘資料為首次使用時惰性載入）。**四個微服務任何一個沒開都不會擋住啟動**：9091 沒開時 Bot 會降級上線（沒有 `!` 指令，但經驗值、升級、`!排行`、遊戲、VIP 掃描照常），並在聊天室公告，之後每 5 分鐘自動重試，服務開起來就會恢復；9092／9093／9094 沒開則只影響對應指令。單純 import 模組（開發、測試）不需要任何微服務。
 - **非同步 HTTP**：所有對微服務與 Twitch Helix 的請求都走共用的 `httpx.AsyncClient`，重試等待不會阻塞事件圈。
-- **發話速率與格式**：所有進聊天室的訊息都經過 `utils/chat_sender.py`——限制 30 秒 18 則（Twitch 官方是 20 則，超過會被靜音約 30 分鐘）、單則超過 500 字元自動截斷、多行訊息整平成單行並以 ` / ` 分隔。換行那一道是協定層的必要保護：IRC 以換行作為一則訊息的結尾，而 twitchio 只驗長度不驗換行，混進 `
+- **發話速率與格式**：所有進聊天室的訊息都經過 `chat/sender.py`——限制 30 秒 18 則（Twitch 官方是 20 則，超過會被靜音約 30 分鐘）、單則超過 500 字元自動截斷、多行訊息整平成單行並以 ` / ` 分隔。換行那一道是協定層的必要保護：IRC 以換行作為一則訊息的結尾，而 twitchio 只驗長度不驗換行，混進 `
 ` 會讓後半段被當成另一行協定內容送出去（見 CODE_REVIEW P1-38）。**新增指令時不必自己處理這些**，但也不要刻意產生多行字串。log 出現「已達自訂發話上限」代表當下正在排隊，不是錯誤。
 - **關閉方式**：直接按 Ctrl+C 即可，會依序取消定時排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，最多等 10 秒。收尾卡住時再按一次 Ctrl+C 會強制結束。
 - **試算表熱重載**：管理員在聊天室打 `!reload` 就會重新拉指令集與轉職表、
