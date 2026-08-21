@@ -128,7 +128,7 @@ tm_twitch_bot/
 │   └── project_report.html     # 互動式專案報告（架構圖／流程圖／指令表）
 ├── tools/
 │   └── start_services.ps1      # 啟動四個本機微服務並檢查是否真的活著
-├── src/tm_twitch_bot/
+├── tm_twitch_bot/
 │   ├── main.py                 # 進入點：Token 驗證/刷新、bootstrap、Bot 啟動
 │   ├── config/
 │   │   └── config_common.yaml  # 非機敏設定（各服務 URL、遊戲參數）
@@ -295,7 +295,7 @@ cp .env.example .env
 1. 啟動 OAuth callback 伺服器：
 
    ```bash
-   uv run python src/tm_twitch_bot/oauth/server.py
+   uv run python tm_twitch_bot/oauth/server.py
    ```
 
 2. 於瀏覽器開啟授權網址（scope 需含 `chat:read chat:edit channel:read:redemptions channel:read:vips channel:manage:vips`），完成授權後從 callback 回應取得 `access_token` 與 `refresh_token`，填入 `.env`。
@@ -303,7 +303,7 @@ cp .env.example .env
 ### 啟動 Bot
 
 ```bash
-uv run python src/tm_twitch_bot/main.py
+uv run python tm_twitch_bot/main.py
 ```
 
 啟動流程：驗證 access token（失效時自動以 refresh token 換新並寫回 `.env`）→ 建立 Twitch 物件 → bootstrap 載入指令集與轉職表 → 連線聊天室 → 訂閱忠誠點數 EventSub → 啟動排程任務。
@@ -333,7 +333,7 @@ TM_AI_AGENT_SECRET=...        # 選填，n8n webhook 的認證 secret；缺少�
 
 Token 由 `utils/token_manager.py` 集中管理：無論啟動時手動刷新或 twitchAPI 執行期自動刷新，都會同步更新記憶體並寫回 `.env`。
 
-### `src/tm_twitch_bot/config/config_common.yaml`（非機敏設定，可入版控）
+### `tm_twitch_bot/config/config_common.yaml`（非機敏設定，可入版控）
 
 ```yaml
 is_test: false                # 測試模式開關

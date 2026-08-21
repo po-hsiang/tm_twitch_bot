@@ -1,3 +1,4 @@
+from tm_twitch_bot import paths
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import logging
@@ -24,8 +25,9 @@ LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # 專案根目錄：src/tm_twitch_bot/utils/log_utils.py → 往上四層
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_LOG_DIR = Path(os.getenv("TM_BOT_LOG_DIR") or _PROJECT_ROOT / "logs")
+# 專案根目錄由 paths 統一提供：這裡原本自己數 parents[3]（utils → tm_twitch_bot
+# → src → 專案根），拿掉 src/ 那層時會安靜地把 log 寫到別的地方（見 paths.py）
+DEFAULT_LOG_DIR = Path(os.getenv("TM_BOT_LOG_DIR") or paths.LOG_DIR)
 LOG_FILE_NAME = "tm_twitch_bot.log"
 MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 BACKUP_COUNT = 5  # 連同當前檔案，最多留 30 MB

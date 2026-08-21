@@ -5,7 +5,7 @@
 | 健檢日期 | 2026-08-09 |
 | 基準版本 | `584821e`（健檢起點） |
 | 最後更新 | 2026-08-21，第十輪修正後 |
-| 範圍 | `src/tm_twitch_bot/` 全部模組、`pyproject.toml`、版控與部署設定 |
+| 範圍 | `tm_twitch_bot/` 全部模組、`pyproject.toml`、版控與部署設定 |
 | 評估準則 | 依使用者指定的優先序：**穩定 > 好維護 > 好擴充** |
 
 > 互動式架構圖與流程圖請見 [`project_report.html`](./project_report.html)。
@@ -705,8 +705,8 @@ import 階段的模組層 `foo = Foo()` 建立，import lock 已經擋住了。�
   轉職表已經和線上不一樣了**（寫著二轉 15 等，線上實際是 30 等），留著會誤導。
   裡面的 `exp_between()` 是設計經驗曲線時的閉式解計算器，線上真正用的是
   `role_system._exp_to_next_level()`；真的要用，
-  `git log --diff-filter=D -- src/tm_twitch_bot/tttest.py` 找到刪除它的 commit，
-  再 `git show <commit>^:src/tm_twitch_bot/tttest.py` 就拿回來了。`pyproject.toml` 為它加的 ruff 排除與覆蓋率排除一併移除。
+  `git log --diff-filter=D -- '*tttest.py'` 找到刪除它的 commit，
+  再 `git show <commit>^:src/tm_twitch_bot/tttest.py` 就拿回來了（當時還有 `src/` 那一層）。`pyproject.toml` 為它加的 ruff 排除與覆蓋率排除一併移除。
 
 **決定保留，但補上「為什麼留著」：**
 
@@ -943,7 +943,7 @@ await level_and_job_system.load_job_config()  # → 9091
 
 **已移除**（`a26e5d6`，P3-31 的連帶收穫——那四行製造了 21 個 E402）。
 
-動手前先查證，因為那是頻道主每次開台的啟動路徑（`uv run python src/tm_twitch_bot/main.py`，直接給腳本路徑而不是 `-m`）：
+動手前先查證，因為那是頻道主每次開台的啟動路徑（`uv run python tm_twitch_bot/main.py`，直接給腳本路徑而不是 `-m`）：
 
 1. 確認套件是 editable 安裝（`site-packages` 裡有 `_editable_impl_tm_twitch_bot.pth`），所以 `tm_twitch_bot` 本來就匯入得到
 2. 移除後**用 README 記載的真實啟動指令實測**：完整開機成功（token 刷新、Twitch 物件建立、指令集 73 筆載入）

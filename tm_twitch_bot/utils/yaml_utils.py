@@ -1,14 +1,12 @@
 from tm_twitch_bot.utils.log_utils import logger
+from tm_twitch_bot import paths
 from dotenv import load_dotenv
-from pathlib import Path
 import yaml
 import os
 
-CONFIG_COMMON_PATH = (
-    Path(__file__).resolve().parent.parent / "config" / "config_common.yaml"
-)
-# 專案根目錄的 .env（utils -> tm_twitch_bot -> src -> 專案根目錄）
-ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
+# 兩個路徑都由 paths 統一提供（原本各自用 __file__ 數上層目錄，見 paths.py）
+CONFIG_COMMON_PATH = paths.CONFIG_COMMON_PATH
+ENV_PATH = paths.ENV_PATH
 
 load_dotenv(ENV_PATH)
 
