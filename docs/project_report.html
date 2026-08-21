@@ -533,11 +533,11 @@
       <h3>專 案 快 照</h3>
       <ul class="meta-list">
         <li><span class="k">服務頻道</span><span class="v hl">twitch.tv/tigermeowtw</span></li>
-        <li><span class="k">Python 模組</span><span class="v">31 個</span></li>
+        <li><span class="k">Python 模組</span><span class="v">42 個（不含 __init__）</span></li>
         <li><span class="k">外部服務依賴</span><span class="v">本機 4 個（:9091~:9094）+ n8n AI Agent</span></li>
         <li><span class="k">MongoDB Collections</span><span class="v">3 個</span></li>
         <li><span class="k">聊天指令</span><span class="v">13+ 個（Sheets 維護）</span></li>
-        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">388 項（全部離線，覆蓋率 77%）</span></li>
+        <li><span class="k">自動化測試</span><span class="v" style="color:var(--sev-low)">427 項（全部離線，覆蓋率 79%）</span></li>
         <li><span class="k">CI</span><span class="v" style="color:var(--sev-low)">GitHub Actions</span></li>
         <li><span class="k">營運方式</span><span class="v">開台時手動啟動</span></li>
       </ul>
@@ -562,13 +562,13 @@
       <p>
         架構上最大的特色是「<strong class="hl">Bot 主程式 + 本地微服務</strong>」的拆分：
         Google Sheets、OpenAI、MongoDB Atlas、YouTube 四種外部資源都不直接在 Bot 內呼叫，
-        而是各自由一個本地 HTTP 服務代理，Bot 端僅保留輕量的 HTTP Client（svc_client 套件）。
+        而是各自由一個本地 HTTP 服務代理，Bot 端僅保留輕量的 HTTP Client（clients 套件）。
         這讓外部依賴的憑證與 SDK 版本可以獨立於 Bot 演進。
       </p>
       <p>
         第二個特色是「<strong class="hl">Google Sheets 作為 CMS</strong>」：
         指令觸發詞、回覆內容、轉職表、食物清單、諧音梗等營運內容全部放在試算表，
-        指令派發器（command_dispatcher）依表格設定動態載入對應的 Python 函數，
+        指令派發器（chat/dispatcher）依表格設定動態載入對應的 Python 函數，
         新增指令不需要動到程式碼。
       </p>
     </div>
@@ -583,7 +583,7 @@
     <div class="feature-grid reveal">
       <button class="feature" type="button">
         <div class="f-head"><h3>RPG 角色養成</h3><span class="f-toggle">+</span></div>
-        <span class="f-mod">role_system / level_and_job_system / rank_system</span>
+        <span class="f-mod">model/character · model/jobs · commands/ranking</span>
         <p>發言即獲得經驗與金幣，升級隨機加屬性，10 等一轉、15 等二轉。</p>
         <div class="f-detail">
           每位觀眾首次發言自動建角，欄位含等級、經驗、金幣、職業與六維屬性（STR / AGI / VIT / INT / DEX / LUK）。
@@ -593,7 +593,7 @@
       </button>
       <button class="feature" type="button">
         <div class="f-head"><h3>經濟系統小遊戲</h3><span class="f-toggle">+</span></div>
-        <span class="f-mod">games / gacha_handler</span>
+        <span class="f-mod">commands/games · commands/gacha</span>
         <p>終極密碼、一桶金、十連抽卡，金幣在觀眾之間流動。</p>
         <div class="f-detail">
           <strong>終極密碼</strong>：猜 0 至 1000 的數字，每猜一次收 5 Gold 並灌 2 Gold 進彩金池，越早猜中基礎獎越高（第 1 次 5090 Gold）。
@@ -603,7 +603,7 @@
       </button>
       <button class="feature" type="button">
         <div class="f-head"><h3>AI 互動</h3><span class="f-toggle">+</span></div>
-        <span class="f-mod">ai_actions.tm_ai_agent / svc_client.openai</span>
+        <span class="f-mod">commands/ai_chat · clients/openai</span>
         <p>AI 問答走 n8n TM AI Agent；!pk AI 旁白對戰走 OpenAI 微服務。</p>
         <div class="f-detail">
           <strong>!GPT / !AI / !LLM / !問</strong>：轉送自架 n8n 的「TM AI Agent」。
@@ -618,7 +618,7 @@
       </button>
       <button class="feature" type="button">
         <div class="f-head"><h3>VIP 兌換系統</h3><span class="f-toggle">+</span></div>
-        <span class="f-mod">vip_system / twitch_vips_api</span>
+        <span class="f-mod">commands/vip · clients/twitch_vips_api</span>
         <p>100 Gold 兌換 31 天頻道 VIP，實際透過 Helix API 授予徽章。</p>
         <div class="f-detail">
           名額上限 51 人，兌換時檢查現有 VIP 身分、名額與餘額，成功後寫入
@@ -628,7 +628,7 @@
       </button>
       <button class="feature" type="button">
         <div class="f-head"><h3>排程任務</h3><span class="f-toggle">+</span></div>
-        <span class="f-mod">task_scheduler</span>
+        <span class="f-mod">scheduler</span>
         <p>喝水提醒、隨機開遊戲、換日提醒，interval 與 daily 兩種型態。</p>
         <div class="f-detail">
           自製的 asyncio <strong>TaskScheduler</strong> 支援固定間隔與每日定時任務，
@@ -674,8 +674,8 @@
         <div class="arch-row cols-4">
           <button class="arch-node" type="button" data-node="main"><span class="n-title">MyBot 進入點</span><span class="n-sub">main.py</span></button>
           <button class="arch-node" type="button" data-node="msgctrl"><span class="n-title">訊息控制器</span><span class="n-sub">message_controller</span></button>
-          <button class="arch-node" type="button" data-node="dispatcher"><span class="n-title">指令派發器</span><span class="n-sub">command_dispatcher</span></button>
-          <button class="arch-node" type="button" data-node="scheduler"><span class="n-title">任務排程器</span><span class="n-sub">task_scheduler</span></button>
+          <button class="arch-node" type="button" data-node="dispatcher"><span class="n-title">指令派發器</span><span class="n-sub">chat/dispatcher</span></button>
+          <button class="arch-node" type="button" data-node="scheduler"><span class="n-title">任務排程器</span><span class="n-sub">scheduler</span></button>
         </div>
       </div>
 
@@ -685,7 +685,7 @@
         <div class="arch-layer-label">LAYER 3 · 業務模組與服務代理</div>
         <div class="arch-row cols-3">
           <button class="arch-node" type="button" data-node="domain"><span class="n-title">業務模組</span><span class="n-sub">RPG / VIP / 遊戲 / AI</span></button>
-          <button class="arch-node" type="button" data-node="svc"><span class="n-title">svc_client</span><span class="n-sub">HTTP Client 層</span></button>
+          <button class="arch-node" type="button" data-node="svc"><span class="n-title">clients</span><span class="n-sub">HTTP Client 層</span></button>
           <button class="arch-node" type="button" data-node="oauth"><span class="n-title">OAuth 伺服器</span><span class="n-sub">FastAPI :8096</span></button>
         </div>
       </div>
@@ -932,9 +932,9 @@
           </thead>
           <tbody>
             <tr><td>Google Sheets</td><td>9091</td><td><s>Bot 完全起不來</s> → 降級上線，5 分鐘自動重試</td><td><code>main.load_sheet_config</code></td></tr>
-            <tr><td>OpenAI</td><td>9092</td><td><code>!pk</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
+            <tr><td>OpenAI</td><td>9092</td><td><code>!pk</code> 回制式錯誤訊息，其餘正常</td><td><code>chat/dispatcher</code></td></tr>
             <tr><td>MongoDB</td><td>9093</td><td>該次訊息的獎勵存不了並記 log，其餘正常</td><td><code>message_controller</code></td></tr>
-            <tr><td>YouTube</td><td>9094</td><td><code>!找歌</code> 回制式錯誤訊息，其餘正常</td><td><code>command_dispatcher</code></td></tr>
+            <tr><td>YouTube</td><td>9094</td><td><code>!找歌</code> 回制式錯誤訊息，其餘正常</td><td><code>chat/dispatcher</code></td></tr>
           </tbody>
         </table>
       </div>
@@ -964,7 +964,7 @@
       <h3 class="ops-h">六、防線放在哪一層：一個被漏掉的指令證明了原本的位置是錯的</h3>
       <p class="ops-p">
         第七輪查到一個長期存在但沒人發現的缺陷：<strong class="hl">終極密碼的開場訊息，觀眾其實看不到內容。</strong>
-        <code>guess_number_game.start()</code> 用三引號多行字串組訊息，而 twitchio 的
+        <code>commands/games/guess_number.start()</code> 用三引號多行字串組訊息，而 twitchio 的
         <code>Messageable.send</code> 是把內容原樣內插進 <code>PRIVMSG #頻道 :{content}
 </code>，
         它的 <code>check_content</code> <strong>只驗長度 500、完全不管換行</strong>。
@@ -983,13 +983,13 @@
       <p class="ops-p" style="margin-top:20px">
         遊戲照常開始，但沒人知道規則與範圍。真正的問題不在這一支遊戲，而在
         <strong class="hl">防線放錯了層</strong>：換行整平原本只做在 AI 回覆那條路
-        （<code>ai_actions/tm_ai_agent.py</code>），可是「不能有換行」是每一則出站訊息都適用的
+        （<code>commands/ai_chat.py</code>），可是「不能有換行」是每一則出站訊息都適用的
         Twitch 協定限制，和早就放在 <code>chat_sender</code> 的長度截斷完全同類。
       </p>
       <p class="ops-p">
         <strong class="hl">已修正</strong>：查過全專案的出站呼叫點，繞過 <code>chat_sender</code>
         直接碰 <code>channel.send</code> 的地方是 <strong>0 處</strong>，所以把換行整平搬到那一層，
-        一次蓋住所有指令——包括 <code>ai_actions/duel.py</code> 回傳的 <code>battle_log</code>，
+        一次蓋住所有指令——包括 <code>commands/duel.py</code> 回傳的 <code>battle_log</code>，
         那是模型生成的自由文字直接進聊天室，而它的 system prompt 只禁了 Markdown、沒禁換行。
         搬下去之後 AI 那側的處理整個刪掉，淨少 50 行程式碼。
       </p>
@@ -1016,22 +1016,22 @@
             <tr><th>指令</th><th>功能</th><th>對應模組</th></tr>
           </thead>
           <tbody>
-            <tr><td class="cmd">!INFO</td><td>查看自己的角色資訊</td><td class="mod">role_system.check</td></tr>
-            <tr><td class="cmd">!英雄</td><td>等級排行榜 Top 3</td><td class="mod">rank_system.top_heroes</td></tr>
-            <tr><td class="cmd">!富翁</td><td>財富排行榜 Top 3</td><td class="mod">rank_system.top_richest</td></tr>
-            <tr><td class="cmd">!抽</td><td>20 Gold 十連抽</td><td class="mod">gacha_handler.gacha</td></tr>
-            <tr><td class="cmd">!猜 &lt;數字&gt;</td><td>終極密碼猜數字（30 分鐘沒人猜中自動流局）</td><td class="mod">guess_number_game.guess</td></tr>
-            <tr><td class="cmd">!投 &lt;金額&gt;</td><td>一桶金投注</td><td class="mod">gold_rush_game.toss</td></tr>
-            <tr><td class="cmd">!gpt / !AI / !LLM / !問</td><td>與 AI 聊天（n8n TM AI Agent，會自行使用工具）</td><td class="mod">tm_ai_agent.ask</td></tr>
-            <tr><td class="cmd">!pk @對象</td><td>AI 旁白 RPG 對戰</td><td class="mod">duel.pk</td></tr>
-            <tr><td class="cmd">!vip</td><td>100 Gold 兌換 31 天 VIP</td><td class="mod">vip_system.redeem</td></tr>
-            <tr><td class="cmd">!吃</td><td>隨機推薦食物</td><td class="mod">daily_food_picker.pick</td></tr>
-            <tr><td class="cmd">!梗</td><td>隨機諧音梗</td><td class="mod">daily_meme_picker.pick</td></tr>
-            <tr><td class="cmd">!YT</td><td>隨機推薦歌單歌曲</td><td class="mod">youtube.pick</td></tr>
-            <tr><td class="cmd">!找歌 &lt;關鍵字&gt;</td><td>搜尋虎喵歌單</td><td class="mod">youtube.search_song</td></tr>
+            <tr><td class="cmd">!INFO</td><td>查看自己的角色資訊</td><td class="mod">commands/profile.check</td></tr>
+            <tr><td class="cmd">!英雄</td><td>等級排行榜 Top 3</td><td class="mod">commands/ranking.top_heroes</td></tr>
+            <tr><td class="cmd">!富翁</td><td>財富排行榜 Top 3</td><td class="mod">commands/ranking.top_richest</td></tr>
+            <tr><td class="cmd">!抽</td><td>20 Gold 十連抽</td><td class="mod">commands/gacha.gacha</td></tr>
+            <tr><td class="cmd">!猜 &lt;數字&gt;</td><td>終極密碼猜數字（30 分鐘沒人猜中自動流局）</td><td class="mod">commands/games/guess_number.guess</td></tr>
+            <tr><td class="cmd">!投 &lt;金額&gt;</td><td>一桶金投注</td><td class="mod">commands/games/gold_rush.toss</td></tr>
+            <tr><td class="cmd">!gpt / !AI / !LLM / !問</td><td>與 AI 聊天（n8n TM AI Agent，會自行使用工具）</td><td class="mod">commands/ai_chat.ask</td></tr>
+            <tr><td class="cmd">!pk @對象</td><td>AI 旁白 RPG 對戰</td><td class="mod">commands/duel.pk</td></tr>
+            <tr><td class="cmd">!vip</td><td>100 Gold 兌換 31 天 VIP</td><td class="mod">commands/vip.redeem</td></tr>
+            <tr><td class="cmd">!吃</td><td>隨機推薦食物</td><td class="mod">commands/food.pick</td></tr>
+            <tr><td class="cmd">!梗</td><td>隨機諧音梗</td><td class="mod">commands/meme.pick</td></tr>
+            <tr><td class="cmd">!YT</td><td>隨機推薦歌單歌曲</td><td class="mod">commands/songs.pick</td></tr>
+            <tr><td class="cmd">!找歌 &lt;關鍵字&gt;</td><td>搜尋虎喵歌單</td><td class="mod">commands/songs.search_song</td></tr>
             <tr><td class="cmd">關鍵字觸發</td><td>句子含特定詞即回覆（例：帥）</td><td class="mod">command_dispatcher</td></tr>
-            <tr><td class="cmd">管理員限定</td><td>手動開啟終極密碼 / 一桶金</td><td class="mod">games.*.start</td></tr>
-            <tr><td class="cmd">!reload</td><td>管理員限定：重新拉取五張試算表，不必重開 Bot（唯一硬寫在程式裡的指令）</td><td class="mod">sheet_reloader.reload</td></tr>
+            <tr><td class="cmd">管理員限定</td><td>手動開啟終極密碼 / 一桶金</td><td class="mod">commands/games/*.start</td></tr>
+            <tr><td class="cmd">!reload</td><td>管理員限定：重新拉取五張試算表，不必重開 Bot（唯一硬寫在程式裡的指令）</td><td class="mod">commands/reload.reload</td></tr>
           </tbody>
         </table>
         <div class="cmd-empty" id="cmdEmpty">沒有符合的指令</div>
@@ -1044,13 +1044,23 @@
     <div class="section-head reveal">
       <h2>優化建議</h2>
       <p>
-        依「安全性、正確性、效能與穩定性、程式品質」四類共 20 項，並標注建議處理的優先度。點擊項目展開細節。
+        初次健檢的 21 項建議，依「安全性、正確性、效能與穩定性、程式品質」分類。點擊項目展開細節。
         <br>
-        <span style="color:var(--sev-low)">已標記處置狀態（2026-08-21，第十輪後）：共 21 項，16 項已修正、2 項部分處理。此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；第七輪另有 5 項新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42）僅記錄在該文件，皆已修正。</span>
+        <strong>預設只顯示「待處理」</strong>——十一輪修下來已結案的佔了大多數，混在一起反而看不出還剩什麼。
+        切到「已結案」可以看歷次的處置與理由（好幾項的結論和原本的建議相反）。
+        <br>
+        <span style="color:var(--sev-low)">狀態更新至 2026-08-22（第十一輪後）：21 項中 16 項已修正、2 項部分處理、3 項待處理。
+        此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；
+        後續各輪新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42 等）只記錄在該文件，皆已修正。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
       </p>
     </div>
     <div class="reveal">
+      <div class="sug-toolbar" id="sugStatusToolbar">
+        <button class="chip active" type="button" data-st="open">待處理<span class="cnt"></span></button>
+        <button class="chip" type="button" data-st="done">已結案<span class="cnt"></span></button>
+        <button class="chip" type="button" data-st="all">全部<span class="cnt"></span></button>
+      </div>
       <div class="sug-toolbar" id="sugToolbar">
         <button class="chip active" type="button" data-cat="all">全部<span class="cnt"></span></button>
         <button class="chip" type="button" data-cat="sec">安全性<span class="cnt"></span></button>
@@ -1123,37 +1133,37 @@
       points: ["event_ready 時建立 WebSocket 並註冊 on_points callback", "stream.online / stream.offline 也可在此訂閱，不需額外 scope（見「營運架構決策」）", "已修正 WebSocket 物件無強參考、可能被 GC 回收的問題；「收不到他人兌換事件」待正式頻道實測"]
     },
     helix: {
-      title: "Helix API（VIP 管理）", file: "svc_client/twitch_vips_api.py",
+      title: "Helix API（VIP 管理）", file: "clients/twitch_vips_api.py",
       desc: "直接呼叫 Twitch Helix REST API，負責頻道 VIP 的新增、移除與查詢。",
-      points: ["add_channel_vip / remove_channel_vip 回傳 (成功與否, 錯誤內容)", "需要 channel:manage:vips 與 channel:read:vips scope", "由 vip_system 在兌換與過期掃描時呼叫"]
+      points: ["add_channel_vip / remove_channel_vip 回傳 (成功與否, 錯誤內容)", "需要 channel:manage:vips 與 channel:read:vips scope", "由 commands/vip 在兌換與過期掃描時呼叫"]
     },
     main: {
       title: "MyBot 進入點", file: "main.py",
       desc: "程式進入點：驗證 access token（失效時用 refresh token 換新並寫回 .env）、建立 twitchAPI 物件、啟動 Bot、註冊 EventSub 與排程任務。",
-      points: ["Windows 下切換為 SelectorEventLoop 政策", "vip_system.set_api_context 注入 client_id / broadcaster_id / token getter", "啟動時執行一次 VIP 過期掃描（刻意不做每日排程，理由見「營運架構決策」）", "token 刷新後透過 listener 同步進 twitchio 並重連 IRC"]
+      points: ["Windows 下切換為 SelectorEventLoop 政策", "commands/vip 的 set_api_context 注入 client_id / broadcaster_id / token getter", "啟動時執行一次 VIP 過期掃描（刻意不做每日排程，理由見「營運架構決策」）", "token 刷新後透過 listener 同步進 twitchio 並重連 IRC"]
     },
     msgctrl: {
-      title: "訊息控制器", file: "scripts/message_controller.py",
+      title: "訊息控制器", file: "chat/message_controller.py",
       desc: "每則訊息的處理管線：過濾機器人、載入角色、冷卻與洗頻檢查、首次招呼、發言獎勵、指令派發、角色存檔。",
       points: ["3 秒冷卻（每使用者）與重複訊息過濾", "首次發言送出分時段招呼並加贈 3 EXP / 3 Gold", "每句話 +1 EXP / +1 Gold，可能觸發升級與轉職廣播"]
     },
     dispatcher: {
-      title: "指令派發器", file: "scripts/command_dispatcher.py",
+      title: "指令派發器", file: "chat/dispatcher.py",
       desc: "啟動時從 Sheets「指令集」載入 觸發詞 → (類型, 內容) 對照表。text 類型直接回覆文字；function 類型以 importlib 動態載入並執行對應函數。",
       points: ["支援 !指令、!指令 參數、無驚嘆號關鍵字三種型態", "全形驚嘆號正規化、指令大小寫不敏感", "模組與函數皆有快取（lru_cache）"]
     },
     scheduler: {
-      title: "任務排程器", file: "scripts/task_scheduler.py",
+      title: "任務排程器", file: "scheduler.py",
       desc: "自製 asyncio 排程器，支援 interval 與 daily 任務，可註冊多個函數隨機執行其一。",
       points: ["每 20 分鐘喝水提醒", "每 30 分鐘隨機開啟終極密碼或一桶金", "每日 23:59 換日提醒"]
     },
     domain: {
-      title: "業務模組", file: "scripts/ · games/ · ai_actions/",
+      title: "業務模組", file: "commands/ · model/",
       desc: "承載所有玩法邏輯：RPG 角色（Character）、VIP 兌換、抽卡、兩款小遊戲、GPT 聊天與 AI 對戰。",
-      points: ["Character dataclass 是核心資料模型，存於 tm_twitch_users", "遊戲與 GPT Session 皆為執行緒安全的 Singleton", "彼此透過 command_dispatcher 的 context（char / message）串接"]
+      points: ["Character dataclass 是核心資料模型，存於 tm_twitch_users", "遊戲與各 client 皆為單例（共用 utils/singleton 的 SingletonMeta）", "彼此透過 chat/dispatcher 的 context（char / message）串接"]
     },
     svc: {
-      title: "svc_client（HTTP Client 層）", file: "svc_client/",
+      title: "clients（HTTP Client 層）", file: "clients/",
       desc: "對四個本地微服務的統一存取層，皆為 Singleton，底層用 requests 搭配三次重試。",
       points: ["google_sheets / openai / mongo_atlas / youtube 四個 client", "request_with_retries：3 次嘗試、間隔 5 秒、讀取逾時 600 秒", "注意：同步呼叫，在 asyncio 事件圈內會阻塞（見優化建議）"]
     },
@@ -1183,7 +1193,7 @@
       points: ["啟動時抓取一次歌單並快取", "快取目前不會自動失效（見優化建議）"]
     },
     ai: {
-      title: "n8n TM AI Agent", file: "svc_client/n8n_ai_agent.py",
+      title: "n8n TM AI Agent", file: "clients/n8n_ai_agent.py",
       desc: "自架 n8n 上的 AI Agent 工作流，多客戶端共用（Discord bot 也在用）。人設「虎喵小粉絲」、對話記憶與工具呼叫全在 n8n 端，Bot 這側只送欄位、排隊，並守住兩道 Twitch 協定防線。",
       points: [
         "channel_id 加 twitch: 前綴，與 Discord 的對話記憶隔離",
@@ -1315,23 +1325,23 @@
     {cat:"sec", sev:"high", st:"done", title:"設定檔存放明文機密，且已隨專案流通",
      desc:"config_common.yaml 內含 Twitch access / refresh token、client_secret 與 OpenAI API key 的明文。任何拿到這份專案的人都能直接冒用頻道身分與計費額度。",
      fix:"改用環境變數或密鑰管理服務（Vault / Secret Manager）；將設定檔加入 .gitignore 並提供 config.example.yaml 範本；懷疑外洩時立即輪替 Twitch Client Secret 與 OpenAI API Key。",
-     files:["config/config_common.yaml","utils/yaml_utils.py"]},
+     files:["config/config_common.yaml","config/loader.py"]},
     {cat:"sec", sev:"high", title:"指令表可動態載入任意模組函數",
      desc:"command_dispatcher._load_function 依 Sheets 內容以 importlib 載入「任意 module.func」。具有試算表編輯權的人等同能在 Bot 主機上執行任意 Python 函數，試算表成為隱形的信任邊界。",
      fix:"改為顯式的函數註冊表（registry dict），或至少白名單限制模組前綴必須是 tm_twitch_bot.*，並在載入時記錄稽核 log。",
-     files:["scripts/command_dispatcher.py"]},
+     files:["chat/dispatcher.py"]},
     {cat:"sec", sev:"mid", st:"done", title:"使用者輸入直接拼進 MongoDB 正規表達式",
      desc:"find_by_name 把 !pk 的目標名稱直接放進 $regex 的 ^{name}$。名稱含 (、[、* 等特殊字元時查詢會失敗或產生非預期比對。",
      fix:"以 re.escape(name) 跳脫後再組 regex，或改用大小寫不敏感的精確比對欄位。",
-     files:["scripts/role_system.py"]},
+     files:["model/character.py"]},
     {cat:"bug", sev:"high", st:"done", title:"sweep_expired 缺少 return，停用時仍執行掃描",
      desc:"vip_system.sweep_expired 開頭檢查 cfg.enabled 為否時只記了一行 warning，沒有 return，後續的過期掃描與 VIP 移除照常執行，與設定語意相反。",
      fix:"在 logger.warning 之後補上 return。",
-     files:["scripts/vip_system.py:151"]},
+     files:["commands/vip.py:151"]},
     {cat:"bug", sev:"high", st:"done", title:"Token 自動刷新後，VIP 系統拿到的是舊 token",
      desc:"twitchAPI 自動刷新 token 時 callback（save_tokens）只把新值寫回 YAML，沒有更新模組層級的 ACCESS 變數。vip_system 的 token_getter 是 lambda: ACCESS，之後兌換 VIP 會以過期 token 呼叫 Helix 而收到 401。",
      fix:"建立單一的 TokenManager 物件保存最新 token，refresh callback 與 token_getter 都指向同一實例；twitchio 的聊天連線 token 也應納入同一機制。",
-     files:["main.py:98","utils/yaml_utils.py"]},
+     files:["main.py:98","config/loader.py"]},
     {cat:"bug", sev:"mid", st:"done", title:"一桶金的結束訊息可能永遠不會送出",
      desc:"_end_game 是排程 callback，但「沒有人參加」「找不到參加者資料」兩種情況用 return 字串處理，沒有任何地方接收這個回傳值，觀眾看不到遊戲結束的訊息。同一個 create_task 還有兩個附帶問題：回傳值沒被留住（可能被 GC 回收）、結算途中的例外被靜默吞掉。",
      fix:"錯誤情況改為 await send_func(訊息)，與得獎訊息走同一條路；task 留強參考並掛 done callback 記錄例外。",
@@ -1339,47 +1349,47 @@
     {cat:"bug", sev:"mid", st:"done", title:"不成對的引號會讓整句訊息處理中斷",
      desc:"dispatch_command 用 shlex.split 切割輸入，遇到單獨的引號（例如觀眾只打了一個 \" ）會拋出 ValueError，例外一路傳回 handle_message，該句訊息的獎勵與回覆全部消失。",
      fix:"以 try/except 包住 shlex.split，失敗時退回 content.split() 的簡單切割。",
-     files:["scripts/command_dispatcher.py:125"]},
+     files:["chat/dispatcher.py:125"]},
     {cat:"bug", sev:"low", st:"done", title:"greeter 存在不可達的程式碼",
      desc:"greet_user 的第一個 return 之後還有一行使用冒險台詞池的 return，永遠不會執行；但冒險台詞仍在啟動時從 Sheets 載入，白白多一次網路呼叫。",
      fix:"擇一保留：刪除死碼與對應的資料載入，或恢復隨機台詞功能。",
-     files:["scripts/greeter.py:35"]},
+     files:["chat/greeter.py:35"]},
     {cat:"bug", sev:"low", st:"done", title:"get_tigermeow_char 回傳原始查詢結果而非 Character",
      desc:"其他查詢方法都會轉成 Character 物件，唯獨這個方法直接回傳 mongo 的 list 結果，呼叫端若比照使用 .gold 等屬性會出錯。",
      fix:"第九輪直接刪除，而不是照原建議包成 Character——它零呼叫端，包起來只是留一個沒人用的方法，而錯誤的型別註記會誘導下一個人去用它（CODE_REVIEW P2-28）。真的需要時 find_by_user_id 就夠了。",
-     files:["scripts/role_system.py:130"]},
+     files:["model/character.py:130"]},
     {cat:"bug", sev:"low", st:"done", title:"validate() 的型別註記與實際回傳不符",
      desc:"函數註記回傳 str，實際回傳 (bool, str) tuple；失敗分支回傳 False, \"\" 的寫法也容易誤讀。",
      fix:"更正為 -> tuple[bool, str]，並統一 return (False, \"\") 的寫法。",
      files:["main.py:38"]},
     {cat:"perf", sev:"high", st:"done", title:"同步 HTTP 呼叫阻塞 asyncio 事件圈",
-     desc:"所有 svc_client 走 requests 同步請求，重試間隔 time.sleep(5)、讀取逾時高達 600 秒。這些呼叫發生在 async 訊息處理路徑上，最壞情況整個 Bot（含聊天心跳與排程）會被凍結十分鐘以上。",
-     fix:"將 svc_client 改為 httpx.AsyncClient（專案已相依 httpx），或以 asyncio.to_thread 包裝既有同步呼叫；重試等待改用 asyncio.sleep，並將讀取逾時降到合理秒數。",
-     files:["utils/http_utils.py","svc_client/*"]},
+     desc:"所有 HTTP client 走 requests 同步請求，重試間隔 time.sleep(5)、讀取逾時高達 600 秒。這些呼叫發生在 async 訊息處理路徑上，最壞情況整個 Bot（含聊天心跳與排程）會被凍結十分鐘以上。",
+     fix:"將 client 層改為 httpx.AsyncClient（專案已相依 httpx），或以 asyncio.to_thread 包裝既有同步呼叫；重試等待改用 asyncio.sleep，並將讀取逾時降到合理秒數。",
+     files:["utils/http_utils.py","clients/*"]},
     {cat:"perf", sev:"high", st:"done", title:"模組載入階段就發出網路請求",
      desc:"command_dispatcher、greeter、daily pickers、level_and_job_system、youtube client 都在 import 時呼叫微服務。任何一個服務沒開，Bot 直接在 import 階段 crash；啟動變慢，單元測試也無法在離線環境進行。",
      fix:"已改為 main() 的明確 bootstrap，測試全部離線；並補上降級行為——Google Sheets 服務沒開時記 error 後照常上線，每 5 分鐘自動重試，恢復後在聊天室公告（CODE_REVIEW P1-37）。",
-     files:["scripts/command_dispatcher.py","scripts/greeter.py","svc_client/youtube.py"]},
+     files:["chat/dispatcher.py","chat/greeter.py","clients/youtube.py"]},
     {cat:"perf", sev:"high", st:"done", title:"角色存檔用整份快照覆蓋，並行寫入會 lost update",
      desc:"Character.save() 是全欄位 $set。某人正在聊天（handler 手上是載入當下的舊快照）時，一桶金結算重新讀取同一個角色、發完獎金存檔；接著聊天 handler 用舊快照把整份文件蓋回去，獎金直接消失。",
      fix:"改為 $inc 差額更新：level / exp / gold 與各項 attributes 只送「變了多少」，job 只在真的變了才 $set。基準線在寫入成功後才推進，失敗時保留差額給下次重試。",
-     files:["scripts/role_system.py"]},
+     files:["model/character.py"]},
     {cat:"perf", sev:"mid", title:"VIP 名額計算撈回整張表再數數",
      desc:"_active_vip_count 用 find(limit=0) 把所有有效 VIP 文件抓回來再 len()，資料量成長後每次 !vip 都是一次全表傳輸。",
      fix:"微服務端新增 count 端點（count_documents），Bot 端改呼叫計數。",
-     files:["scripts/vip_system.py:63"]},
+     files:["commands/vip.py:63"]},
     {cat:"perf", sev:"mid", st:"partial", title:"各式快取缺乏失效機制",
      desc:"YouTube 歌單只在啟動時抓一次；_last_cmd_ts 與 _last_message 字典無上限成長。長時間運行下資料越來越舊、記憶體緩慢上升。（更正：!吃 / !梗 / 招呼名單「重啟才重置」經確認為刻意設計——Bot 只在開台時啟動，進程生命週期就等於一場直播，見「營運架構決策」。）",
      fix:"建立統一的 TTL 快取工具；定期修剪冷卻字典。原本建議的「每日重置 food / meme / 招呼名單」已撤回，與刻意的營運設計衝突。第九輪補上手動失效：!reload 會清掉三張內容表的快取（但刻意不清「一人一餐」「一場一則梗」「一場打一次招呼」這些遊戲規則）。YouTube 歌單的快取仍然沒有任何失效機制。",
-     files:["svc_client/youtube.py","scripts/daily_food_picker.py","scripts/message_controller.py"]},
+     files:["clients/youtube.py","commands/food.py","chat/message_controller.py"]},
     {cat:"perf", sev:"mid", st:"partial", title:"斷線或例外後 Bot 直接死亡，無自動重連",
      desc:"main() 捕捉到例外後 log 完就 sys.exit；Twitch 斷線、token 過期或微服務短暫不可用都會讓 Bot 需要人工重啟。VIP 過期掃描也只在啟動時跑一次。（已補上 graceful shutdown：SIGINT / SIGTERM 會依序取消排程、關閉 EventSub、IRC、Helix 與 httpx 連線池，finally 裡的 sys.exit 也已移除。）",
      fix:"剩下的部分：外層加 supervisor 迴圈搭配指數退避重連。依「開台時手動啟動」的營運決策，這一項已從必要降為加分項——當次開台故障是可接受的。",
-     files:["main.py:179","scripts/vip_system.py"]},
+     files:["main.py:179","commands/vip.py"]},
     {cat:"quality", sev:"mid", st:"done", title:"_SingletonMeta 重複貼了八份",
      desc:"八個檔案各自維護一份完全相同的 Singleton metaclass，未來修改行為要改八個地方。（原本記為七份：第八輪隨 gpt_chat_session 移除少了一份，但後來新增的 n8n_ai_agent 又貼了一份沒被算進去——這剛好證明了「八份都一樣」沒有任何機制保證。）",
      fix:"第十輪抽到 utils/singleton.py，八處改用共用的 SingletonMeta，八個只為那把鎖而存在的 import threading 一併消失。合併帶來一個新風險：鎖從八把變成一把，而八份各有自己的鎖時「單例 A 的 __init__ 裡建立單例 B」是安全的——共用一把非可重入的 threading.Lock 就是死鎖（整個程式停住、沒有錯誤訊息）。所以共用的那把用 RLock。鎖本身刻意留著：現在確實沒有作用（單例都在 import 階段建立），但代價只有啟動時八次沒有競爭的鎖操作，而哪天有人從 asyncio.to_thread 裡建立單例時它就有意義。測試會驗 type(cls) is SingletonMeta，有人又貼一份就會被抓到。詳見 CODE_REVIEW P2-21。",
-     files:["utils/singleton.py","svc_client/*","games/*","scripts/vip_system.py"]},
+     files:["utils/singleton.py","clients/*","commands/games/*","commands/vip.py"]},
     {cat:"quality", sev:"mid", title:"twitchio 2.x 已停止維護",
      desc:"專案同時相依 twitchio 2.x（聊天）與 twitchAPI 4.x（EventSub / Helix）。twitchio 2.x 已 EOL，且兩套件的 token 管理彼此獨立，是刷新不同步問題的根源之一。",
      fix:"評估升級 twitchio 3.x，或統一改用 twitchAPI 內建的 Chat 功能，收斂為單一相依與單一 token 生命週期。",
@@ -1390,8 +1400,8 @@
      files:["tests/"]},
     {cat:"quality", sev:"low", st:"done", title:"指令集無法熱更新",
      desc:"指令表只在啟動時載入一次，營運修改 Sheets 後必須重啟 Bot 才生效——而開台途中重啟就是斷線一次，與「試算表當 CMS」的設計初衷相違。",
-     fix:"新增管理員限定的 !reload（scripts/sheet_reloader.py），一次重拉指令集與轉職表、並清掉吃啥／諧音梗／冒險台詞的惰性快取。刻意只重載資料不重載程式（importlib.reload 會讓七個單例各生出第二份實例，進行中的遊戲會憑空消失）；也刻意不做排程自動重載（頻道主改表時人就在現場，定時拉表只會讓改動在無法預期的時間點生效，還可能把改到一半的表推上線）。!reload 是全專案唯一硬寫在程式裡的指令，因為它是修復工具，不能跟著壞掉的那張表一起失效。詳見 CODE_REVIEW P2-26。",
-     files:["scripts/sheet_reloader.py","scripts/command_dispatcher.py","main.py"]},
+     fix:"新增管理員限定的 !reload（commands/reload.py），一次重拉指令集與轉職表、並清掉吃啥／諧音梗／冒險台詞的惰性快取。刻意只重載資料不重載程式（importlib.reload 會讓七個單例各生出第二份實例，進行中的遊戲會憑空消失）；也刻意不做排程自動重載（頻道主改表時人就在現場，定時拉表只會讓改動在無法預期的時間點生效，還可能把改到一半的表推上線）。!reload 是全專案唯一硬寫在程式裡的指令，因為它是修復工具，不能跟著壞掉的那張表一起失效。詳見 CODE_REVIEW P2-26。",
+     files:["commands/reload.py","chat/dispatcher.py","main.py"]},
     {cat:"quality", sev:"low", st:"done", title:"清理死碼與佔位資訊",
      desc:"error_utils / vault_utils / asset_file_utils 幾乎整檔註解（含另一專案 vivy 的遺留）、tttest.py 為草稿檔。真正的成本不是那幾行佔空間，而是下一個讀的人分不出哪些是活的。（main.py finally 裡的 sys.exit 已隨 graceful shutdown 一併移除。）",
      fix:"第九輪結案，分兩類處理。刪掉的：tttest.py（裡面那份轉職表已經和線上不一樣——寫二轉 15 等，線上是 30 等，留著會誤導）、role_system.get_tigermeow_char()、GoldRushGame._timer。保留但寫明理由的：dump_obj_utils 是手動除錯 twitchio attrs 物件用的工具，零呼叫端是刻意的（也是宣告 attrs 的唯一理由）；三支註解檔一行都沒刪，改為在檔頭註明是刻意保留的備忘、不是待清的死碼。沒有採用原建議的「搬到 docs/ 或獨立分支」——搬走等於把「這支檔案本來想做什麼」跟檔案本身拆開。詳見 CODE_REVIEW P2-28。",
@@ -1405,6 +1415,8 @@
     var item = document.createElement("div");
     item.className = "sug";
     item.setAttribute("data-cat", s.cat);
+    // 沒有 st 的就是還沒處理；partial 也算待處理（還有剩下的部分）
+    item.setAttribute("data-st", s.st || "open");
     if (s.st) item.classList.add("st-" + s.st);
     var filesHtml = s.files.map(function(f){ return "<code>" + f + "</code>"; }).join("");
     var stHtml = s.st ? '<span class="sug-st ' + s.st + '">' + ST_LABEL[s.st] + '</span>' : "";
@@ -1429,22 +1441,62 @@
     sugList.appendChild(item);
   });
 
-  /* 篩選 chips 與數量 */
-  var chips = document.querySelectorAll("#sugToolbar .chip");
-  chips.forEach(function(chip){
-    var cat = chip.getAttribute("data-cat");
-    var n = (cat === "all") ? SUGGESTIONS.length
-          : SUGGESTIONS.filter(function(s){ return s.cat === cat; }).length;
-    chip.querySelector(".cnt").textContent = n;
+  /* 兩層篩選：狀態（待處理／已結案）× 分類。預設停在「待處理」。 */
+  var curSt = "open";
+  var curCat = "all";
+
+  function matchSt(s, st){
+    if (st === "all") return true;
+    var itemSt = s.st || "open";
+    return st === "done" ? itemSt === "done" : itemSt !== "done";
+  }
+
+  function applyFilters(){
+    document.querySelectorAll(".sug").forEach(function(item){
+      var itemSt = item.getAttribute("data-st");
+      var stOk = (curSt === "all") || (curSt === "done" ? itemSt === "done" : itemSt !== "done");
+      var catOk = (curCat === "all") || (item.getAttribute("data-cat") === curCat);
+      item.style.display = (stOk && catOk) ? "" : "none";
+    });
+    // 分類的數量跟著目前的狀態走，不然數字會和看到的清單不一致
+    catChips.forEach(function(chip){
+      var cat = chip.getAttribute("data-cat");
+      chip.querySelector(".cnt").textContent = SUGGESTIONS.filter(function(s){
+        return matchSt(s, curSt) && (cat === "all" || s.cat === cat);
+      }).length;
+    });
+  }
+
+  var stChips = Array.prototype.slice.call(
+    document.querySelectorAll("#sugStatusToolbar .chip")
+  );
+  var catChips = Array.prototype.slice.call(
+    document.querySelectorAll("#sugToolbar .chip")
+  );
+
+  stChips.forEach(function(chip){
+    var st = chip.getAttribute("data-st");
+    chip.querySelector(".cnt").textContent = SUGGESTIONS.filter(function(s){
+      return matchSt(s, st);
+    }).length;
     chip.addEventListener("click", function(){
-      chips.forEach(function(c){ c.classList.remove("active"); });
+      stChips.forEach(function(c){ c.classList.remove("active"); });
       chip.classList.add("active");
-      document.querySelectorAll(".sug").forEach(function(item){
-        var show = (cat === "all") || (item.getAttribute("data-cat") === cat);
-        item.style.display = show ? "" : "none";
-      });
+      curSt = st;
+      applyFilters();
     });
   });
+
+  catChips.forEach(function(chip){
+    chip.addEventListener("click", function(){
+      catChips.forEach(function(c){ c.classList.remove("active"); });
+      chip.classList.add("active");
+      curCat = chip.getAttribute("data-cat");
+      applyFilters();
+    });
+  });
+
+  applyFilters();
 
 })();
 </script>
