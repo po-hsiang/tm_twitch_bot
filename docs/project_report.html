@@ -1239,7 +1239,7 @@
      c:"message_controller.py\nif user_id in config[<b>\"bot_user_id\"</b>]:\n    return"},
     {t:"載入或建立角色", b:null,
      d:"以 user_id 查詢 tm_twitch_users，存在則轉為 Character 物件並補記最新暱稱；不存在則以預設屬性建角並寫入資料庫。",
-     c:"role_system.py\nchar = Character.<b>load_or_create</b>(\n    user_id, username, display_name)"},
+     c:"model/character.py\nchar = Character.<b>load_or_create</b>(\n    user_id, username, display_name)"},
     {t:"累計發言次數", b:null,
      d:"不論這句話後續是否被冷卻或洗頻規則擋下，total_msgs 都先 +1，作為真實聊天活躍度的統計。",
      c:"message_controller.py\nmongo.update(..., {\"$inc\": {<b>\"total_msgs\"</b>: 1}})"},
@@ -1254,7 +1254,7 @@
      c:"greeter.py\ngreet = <b>greet_user</b>(user_id)\nawait channel.send(f\"@{name} {greet}\")"},
     {t:"發言獎勵", b:null,
      d:"每句話固定 +1 EXP 與 +1 Gold。經驗累積達「等級 × 10」即升級，隨機提升一項屬性；到達 10 / 15 等時隨機轉職並廣播。",
-     c:"role_system.py\nawait char.<b>gain_exp</b>(1, send)\nchar.<b>gain_gold</b>(1)"},
+     c:"model/character.py\nawait char.<b>gain_exp</b>(1, send)\nchar.<b>gain_gold</b>(1)"},
     {t:"指令派發", b:null,
      d:"將訊息正規化後比對指令表：text 類型直接回覆設定的文字；function 類型動態載入模組函數，並把 char、message 等 context 傳入。",
      c:"command_dispatcher.py\nreply = <b>dispatch_command</b>(content,\n    char=char, message=message)"},
@@ -1263,7 +1263,7 @@
      c:"message_controller.py\nawait message.channel.send(\n    f\"@{display_name} {cmd_reply}\")"},
     {t:"角色存檔", b:null,
      d:"把這一輪累積的等級、經驗、金幣、職業、屬性與暱稱變動一次寫回 MongoDB，完成整個處理循環。",
-     c:"role_system.py\nchar.<b>save</b>()  # $set + $addToSet"}
+     c:"model/character.py\nchar.<b>save</b>()  # $set + $addToSet"}
   ];
   var flowSteps = document.getElementById("flowSteps");
   FLOW.forEach(function(step, i){
@@ -1396,7 +1396,7 @@
      files:["pyproject.toml","main.py"]},
     {cat:"quality", sev:"mid", st:"done", title:"tests/ 目錄為空，核心邏輯無測試保護",
      desc:"升級經驗計算、指令解析、遊戲規則、轉職表解析等大多是純函數，非常適合單元測試，目前完全沒有覆蓋。",
-     fix:"先為 role_system.gain_exp、command_dispatcher 解析、guess_number / gold_rush 規則補 pytest；搭配前述的 lazy 初始化改造，測試就不需要真的連微服務。",
+     fix:"先為 Character.gain_exp、指令派發解析、guess_number / gold_rush 規則補 pytest；搭配前述的 lazy 初始化改造，測試就不需要真的連微服務。",
      files:["tests/"]},
     {cat:"quality", sev:"low", st:"done", title:"指令集無法熱更新",
      desc:"指令表只在啟動時載入一次，營運修改 Sheets 後必須重啟 Bot 才生效——而開台途中重啟就是斷線一次，與「試算表當 CMS」的設計初衷相違。",
