@@ -10,6 +10,7 @@
 |---|---|
 | [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) | 程式碼健檢報告：缺陷清單、優先序與處置狀態 |
 | [`docs/SERVICES.md`](docs/SERVICES.md) | 外部服務清單：port／container／專案位置／端點／掛掉時的影響 |
+| [`docs/IDEAS.md`](docs/IDEAS.md) | 玩法提案：還沒做但值得做的功能，含社群價值與技術落點 |
 | [`docs/project_report.html`](docs/project_report.html) | 互動式專案報告：架構圖、訊息流程圖、指令總表 |
 
 ---
