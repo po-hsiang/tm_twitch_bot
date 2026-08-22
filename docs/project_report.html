@@ -406,9 +406,42 @@
   }
   .sug-st.done{background:rgba(125,184,255,.16);color:var(--sev-low);border:1px solid rgba(125,184,255,.45)}
   .sug-st.partial{background:var(--sev-mid-bg);color:var(--sev-mid);border:1px solid rgba(255,210,87,.45)}
-  .sug.st-done .sug-title{color:var(--faint);text-decoration:line-through;text-decoration-thickness:1px}
-  .sug.st-done.open .sug-title{color:var(--accent);text-decoration:none}
+  .sug-st.rejected{background:var(--sev-high-bg);color:var(--sev-high);border:1px solid rgba(255,143,143,.4)}
+  .sug.st-done .sug-title,
+  .sug.st-rejected .sug-title{color:var(--faint);text-decoration:line-through;text-decoration-thickness:1px}
+  .sug.st-done.open .sug-title,
+  .sug.st-rejected.open .sug-title{color:var(--accent);text-decoration:none}
   @media (max-width:760px){ .sug-st{display:none} }
+
+  /* ============ 玩法提案 ============ */
+  /* 卡片沿用 .sug 那一套（同樣是「摺疊清單 + 兩層篩選」），
+     只補三樣這裡才有的東西：優先推薦徽章、技術落點／風險區塊、共同限制卡。 */
+  .sug-pri{
+    font-size:12.5px;font-weight:800;padding:3px 10px;border-radius:999px;
+    flex-shrink:0;white-space:nowrap;
+    color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-border);
+  }
+  @media (max-width:760px){ .sug-pri{display:none} }
+  .sug-body .fix.value::before{content:"社群價值：";font-weight:800;color:var(--accent)}
+  .sug-body .fix.reason::before{content:"不做的理由：";font-weight:800;color:var(--accent)}
+  .idea-note{
+    margin-top:12px;padding:12px 18px;border-radius:8px;
+    background:var(--bg);border:1px solid var(--border-strong);
+    font-size:16.5px;color:var(--muted);max-width:78ch;
+  }
+  .idea-note b{color:var(--text);font-weight:800}
+  .idea-note.warn{border-color:rgba(255,210,87,.35)}
+  .idea-note.warn b{color:var(--sev-mid)}
+  .limits{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:18px;margin-top:22px;
+  }
+  .limit{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:24px;
+  }
+  .limit h4{font-size:17.5px;color:var(--accent);margin-bottom:10px;letter-spacing:-.01em}
+  .limit p{font-size:16.5px;color:var(--muted)}
 
   /* ============ 營運架構決策 ============ */
   .ops-block{
@@ -429,7 +462,8 @@
   .ops-list li::marker{color:var(--accent)}
   .ops-list strong{color:var(--text)}
   .ops-list strong.hl{color:var(--accent)}
-  .ops-block code,.ops-verdict code,#ops td code{
+  .ops-block code,.ops-verdict code,#ops td code,
+  .limit code,#ideas td code,.idea-note code{
     font-family:var(--mono);font-size:14.5px;color:var(--accent);
     background:var(--raised);padding:1px 7px;border-radius:5px;border:1px solid var(--border);
   }
@@ -505,6 +539,7 @@
       <li><a href="#ops">營運架構</a></li>
       <li><a href="#commands">指令</a></li>
       <li><a href="#suggestions">優化建議</a></li>
+      <li><a href="#ideas">玩法提案</a></li>
     </ul>
   </div>
 </nav>
@@ -1053,12 +1088,16 @@
         此清單是初次健檢的建議，與 <code>CODE_REVIEW.md</code> 的 P 編號是兩套獨立編號；
         後續各輪新發現的缺陷（P1-38、P1-39、P2-40、P2-41、P2-42 等）只記錄在該文件，皆已修正。</span>
         更完整的缺陷清單與逐項說明見 <code style="font-family:var(--mono);color:var(--accent)">docs/CODE_REVIEW.md</code>。
+        <br>
+        這一區只放<strong>缺陷與技術債</strong>；「還沒做、但值得做」的玩法在下一區的
+        <a href="#ideas" style="color:var(--accent)">玩法提案</a>，兩者刻意不混在一起——
+        修缺陷和加玩法的判斷依據完全不同。
       </p>
     </div>
     <div class="reveal">
       <div class="sug-toolbar" id="sugStatusToolbar">
         <button class="chip active" type="button" data-st="open">待處理<span class="cnt"></span></button>
-        <button class="chip" type="button" data-st="done">已結案<span class="cnt"></span></button>
+        <button class="chip" type="button" data-st="closed">已結案<span class="cnt"></span></button>
         <button class="chip" type="button" data-st="all">全部<span class="cnt"></span></button>
       </div>
       <div class="sug-toolbar" id="sugToolbar">
@@ -1072,12 +1111,105 @@
     </div>
   </section>
 
+  <!-- ============ 玩法提案 ============ -->
+  <section id="ideas">
+    <div class="section-head reveal">
+      <h2>玩法提案</h2>
+      <p>
+        這一區和上面的「優化建議」<strong>完全獨立</strong>：上面是缺陷與技術債，這裡是
+        「還沒做、但值得做」的社群玩法。<strong>這不是待辦清單，是選單</strong>——每一項都標了
+        社群價值（為什麼觀眾會在意）、技術落點、成本與風險，但沒有任何一項標「一定要做」，
+        那是頻道主的決定。
+        <br>
+        <strong>預設只顯示「待辦」。</strong>
+        <span style="color:var(--sev-low)">「已結案」目前只有刻意不做的 5 項——因為還沒有任何一項被實作，
+        所以這個頁籤叫「已結案」而不是「已完成」。真的做完一項時把它移到已結案，
+        就會像上面的優化建議一樣留下處置紀錄。</span>
+        <br>
+        完整版本（含逐項的取捨說明）見
+        <code style="font-family:var(--mono);color:var(--accent)">docs/IDEAS.md</code>。
+      </p>
+    </div>
+
+    <div class="reveal">
+      <h3 class="ops-h" style="margin-top:8px">先講三個共同的限制</h3>
+      <p style="color:var(--muted);font-size:17px;max-width:78ch">
+        任何新玩法都會撞到這三件事，設計時先想過會省很多返工。這不是效能微調，
+        <strong>這三條會決定玩法能不能成立</strong>。
+      </p>
+      <div class="limits">
+        <div class="limit">
+          <h4>一、發話量是硬上限</h4>
+          <p>
+            <code>chat/sender.py</code> 限制 30 秒 18 則（Twitch 官方 20 則，超過會被靜音約 30 分鐘）。
+            「每個人各回一則」的玩法在 20 人同時參與時就會排隊甚至被丟棄。
+            <strong>凡是全員參與的玩法，一定要設計成「彙總成一則」</strong>——例如 Boss 戰不要每次攻擊都回覆，
+            而是每 30 秒公告一次血量。
+          </p>
+        </div>
+        <div class="limit">
+          <h4>二、Bot 只在開台期間存在</h4>
+          <p>
+            這是刻意的營運決策（見上方「營運架構決策」）：不開台就沒有人能刷經驗值。
+            所以<strong>任何「每日」機制的真實語意都是「每場開台」</strong>，
+            而跨場次的東西（連續簽到、週報）必須把日期存進 MongoDB，不能靠記憶體。
+          </p>
+        </div>
+        <div class="limit">
+          <h4>三、內容能放試算表就放試算表</h4>
+          <p>
+            題庫、稱號、獎勵表、節慶文案都應該是 Google Sheets 的一張工作表，改內容不必改程式、
+            也不必重開 Bot（<code>!reload</code> 就生效）。
+            <strong>程式只負責規則，試算表負責內容</strong>——這是本專案已經證明有效的分工。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal" style="margin-top:34px">
+      <div class="sug-toolbar" id="ideaStatusToolbar">
+        <button class="chip active" type="button" data-st="open">待辦<span class="cnt"></span></button>
+        <button class="chip" type="button" data-st="closed">已結案<span class="cnt"></span></button>
+        <button class="chip" type="button" data-st="all">全部<span class="cnt"></span></button>
+      </div>
+      <div class="sug-toolbar" id="ideaToolbar">
+        <button class="chip active" type="button" data-cat="all">全部<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="top">優先推薦<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="retain">留存回訪<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="engage">互動玩法<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="onboard">新人引導<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="event">節慶活動<span class="cnt"></span></button>
+        <button class="chip" type="button" data-cat="line">界線與原則<span class="cnt"></span></button>
+      </div>
+      <div class="sug-list" id="ideaList"></div>
+    </div>
+
+    <div class="reveal" style="margin-top:34px">
+      <h3 class="ops-h">這些提案需要的外部改動</h3>
+      <p style="color:var(--muted);font-size:17px;max-width:78ch">
+        其餘全部只需要動這個 repo。這張表的意義是：<strong>看到「誰要動」不是自己時，
+        這一項的排程就不完全由自己決定</strong>。
+      </p>
+      <div class="cmd-table-wrap" style="margin-top:18px">
+        <table>
+          <thead><tr><th>提案</th><th>需要什麼</th><th>誰要動</th></tr></thead>
+          <tbody>
+            <tr><td>諧音梗投稿、剪輯點清單寫回試算表</td><td><code>google-sheets-svc</code> 加寫入端點</td><td>微服務（Go）</td></tr>
+            <tr><td>週報統計圖表</td><td>n8n 直接讀 <code>mongo-atlas-svc</code></td><td>n8n 工作流</td></tr>
+            <tr><td>里程碑彩帶（追隨者數）</td><td>Twitch <code>channel:read:follows</code> scope，要重新授權</td><td>頻道主</td></tr>
+            <tr><td>清理任何測試資料</td><td><code>mongo-atlas-svc</code> 沒有刪除端點（刻意的保守設計）</td><td>微服務（Go）</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <footer>
   <div class="wrap">
-    <span>tm_twitch_bot 專案技術報告 · 2026-07-10 初版 · 2026-08-09 更新</span>
-    <span>由系統架構審閱產出 · <code>project_report.html</code> · 缺陷清單見 <code>CODE_REVIEW.md</code></span>
+    <span>tm_twitch_bot 專案技術報告 · 2026-07-10 初版 · 2026-08-22 更新</span>
+    <span>由系統架構審閱產出 · <code>project_report.html</code> · 缺陷清單見 <code>CODE_REVIEW.md</code> · 玩法選單見 <code>IDEAS.md</code></span>
   </div>
 </footer>
 
@@ -1410,18 +1542,94 @@
   var SEV_LABEL = {high:"高", mid:"中", low:"低"};
   var CAT_LABEL = {sec:"安全性", bug:"正確性", perf:"效能與穩定性", quality:"程式品質"};
   var ST_LABEL = {done:"已修正", partial:"部分處理"};
-  var sugList = document.getElementById("sugList");
-  SUGGESTIONS.forEach(function(s, i){
-    var item = document.createElement("div");
-    item.className = "sug";
-    item.setAttribute("data-cat", s.cat);
-    // 沒有 st 的就是還沒處理；partial 也算待處理（還有剩下的部分）
-    item.setAttribute("data-st", s.st || "open");
-    if (s.st) item.classList.add("st-" + s.st);
-    var filesHtml = s.files.map(function(f){ return "<code>" + f + "</code>"; }).join("");
+
+  /* 「已結案」= 做完了，或決定不做。
+     partial（部分處理）刻意算待處理——還有剩下的部分沒做完。 */
+  var CLOSED_ST = {done:1, rejected:1};
+
+  function toArray(nodes){ return Array.prototype.slice.call(nodes); }
+
+  function filesHtml(files){
+    return (files || []).map(function(f){ return "<code>" + f + "</code>"; }).join("");
+  }
+
+  /* ---------- 共用：狀態 × 分類兩層篩選的摺疊清單 ----------
+     「優化建議」與「玩法提案」的行為一模一樣，只有資料與卡片內容不同，
+     所以抽成一個函數——改篩選邏輯只要改一處。
+     （這份報告裡就有一項缺陷是「同一段東西被複製八份」，不必再示範一次。） */
+  function mountPanel(cfg){
+    var list = document.getElementById(cfg.listId);
+    var rows = cfg.items.map(function(it){
+      var el = document.createElement("div");
+      el.className = "sug";
+      el.setAttribute("data-cat", it.cat);
+      el.setAttribute("data-st", it.st || "open");   // 沒有 st 的就是還沒處理
+      if (it.st) el.classList.add("st-" + it.st);
+      el.innerHTML = cfg.render(it);
+      var head = el.querySelector(".sug-head");
+      head.addEventListener("click", function(){
+        var open = el.classList.toggle("open");
+        head.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      list.appendChild(el);
+      return {item: it, el: el};
+    });
+
+    function matchSt(it, st){
+      if (st === "all") return true;
+      var closed = !!CLOSED_ST[it.st];
+      return st === "closed" ? closed : !closed;
+    }
+
+    var stChips = toArray(document.querySelectorAll("#" + cfg.stToolbarId + " .chip"));
+    var catChips = toArray(document.querySelectorAll("#" + cfg.catToolbarId + " .chip"));
+    var curSt = cfg.defaultSt;
+    var curCat = "all";
+
+    function applyFilters(){
+      rows.forEach(function(row){
+        var stOk = matchSt(row.item, curSt);
+        var catOk = (curCat === "all") || (row.item.cat === curCat);
+        row.el.style.display = (stOk && catOk) ? "" : "none";
+      });
+      // 分類的數量跟著目前的狀態走，不然數字會和看到的清單不一致
+      catChips.forEach(function(chip){
+        var cat = chip.getAttribute("data-cat");
+        chip.querySelector(".cnt").textContent = cfg.items.filter(function(it){
+          return matchSt(it, curSt) && (cat === "all" || it.cat === cat);
+        }).length;
+      });
+    }
+
+    stChips.forEach(function(chip){
+      var st = chip.getAttribute("data-st");
+      chip.querySelector(".cnt").textContent = cfg.items.filter(function(it){
+        return matchSt(it, st);
+      }).length;
+      chip.classList.toggle("active", st === curSt);
+      chip.addEventListener("click", function(){
+        stChips.forEach(function(c){ c.classList.remove("active"); });
+        chip.classList.add("active");
+        curSt = st;
+        applyFilters();
+      });
+    });
+
+    catChips.forEach(function(chip){
+      chip.addEventListener("click", function(){
+        catChips.forEach(function(c){ c.classList.remove("active"); });
+        chip.classList.add("active");
+        curCat = chip.getAttribute("data-cat");
+        applyFilters();
+      });
+    });
+
+    applyFilters();
+  }
+
+  function renderSuggestion(s){
     var stHtml = s.st ? '<span class="sug-st ' + s.st + '">' + ST_LABEL[s.st] + '</span>' : "";
-    item.innerHTML =
-      '<button class="sug-head" type="button" aria-expanded="false">' +
+    return '<button class="sug-head" type="button" aria-expanded="false">' +
         '<span class="sev ' + s.sev + '">' + SEV_LABEL[s.sev] + '</span>' +
         '<span class="sug-cat">' + CAT_LABEL[s.cat] + '</span>' +
         '<span class="sug-title">' + s.title + '</span>' +
@@ -1431,72 +1639,176 @@
       '<div class="sug-body">' +
         '<p>' + s.desc + '</p>' +
         '<div class="fix">' + s.fix + '</div>' +
-        '<div class="files">' + filesHtml + '</div>' +
+        '<div class="files">' + filesHtml(s.files) + '</div>' +
       '</div>';
-    var head = item.querySelector(".sug-head");
-    head.addEventListener("click", function(){
-      var open = item.classList.toggle("open");
-      head.setAttribute("aria-expanded", open ? "true" : "false");
-    });
-    sugList.appendChild(item);
-  });
-
-  /* 兩層篩選：狀態（待處理／已結案）× 分類。預設停在「待處理」。 */
-  var curSt = "open";
-  var curCat = "all";
-
-  function matchSt(s, st){
-    if (st === "all") return true;
-    var itemSt = s.st || "open";
-    return st === "done" ? itemSt === "done" : itemSt !== "done";
   }
 
-  function applyFilters(){
-    document.querySelectorAll(".sug").forEach(function(item){
-      var itemSt = item.getAttribute("data-st");
-      var stOk = (curSt === "all") || (curSt === "done" ? itemSt === "done" : itemSt !== "done");
-      var catOk = (curCat === "all") || (item.getAttribute("data-cat") === curCat);
-      item.style.display = (stOk && catOk) ? "" : "none";
-    });
-    // 分類的數量跟著目前的狀態走，不然數字會和看到的清單不一致
-    catChips.forEach(function(chip){
-      var cat = chip.getAttribute("data-cat");
-      chip.querySelector(".cnt").textContent = SUGGESTIONS.filter(function(s){
-        return matchSt(s, curSt) && (cat === "all" || s.cat === cat);
-      }).length;
-    });
+  mountPanel({
+    listId: "sugList",
+    stToolbarId: "sugStatusToolbar",
+    catToolbarId: "sugToolbar",
+    items: SUGGESTIONS,
+    render: renderSuggestion,
+    defaultSt: "open"
+  });
+
+  /* ---------- 玩法提案 ----------
+     跟上面的優化建議共用摺疊清單元件，但資料完全分開：
+     那邊是「缺陷」，這邊是「選單」。內容與 docs/IDEAS.md 同源，改一邊要改兩邊。
+     cost 借用 .sev 的三色（成本高=紅、中=黃、低=藍）；
+     st:"rejected" 是刻意不做的決定，和 done 一樣算已結案。 */
+  var IDEA_CAT_LABEL = {
+    top:"優先推薦", retain:"留存回訪", engage:"互動玩法",
+    onboard:"新人引導", event:"節慶活動", line:"界線與原則"
+  };
+  var COST_LABEL = {low:"成本低", mid:"成本中", high:"成本高"};
+  var IDEA_ST_LABEL = {done:"已實作", rejected:"不採納"};
+
+  var IDEAS = [
+    {cat:"top", cost:"mid", title:"組隊 Boss 戰（!討伐）",
+     desc:"排程每隔一段時間讓一隻 Boss 出現（「野生的紅色蝸牛出現了！血量 5000」），接下來 3 分鐘內所有人的發言都算攻擊，等級與屬性影響傷害。打倒了全體參與者分獎金，時間到沒打倒就逃走。Boss 名稱、血量、獎勵放試算表。",
+     value:"這是清單裡唯一把「一起」寫進規則的玩法。現有的遊戲都是個人競賽（排行榜、抽卡、終極密碼），贏家只有一個；Boss 戰的獎勵是集體的，所以觀眾會互相喊「快來打」——那是自然的拉人行為，不必靠 Bot 洗頻。而且它讓潛水的人有理由講第一句話，因為打 Boss 不需要學任何指令，講話就算參與。",
+     tech:"新增 commands/games/boss.py，scheduler.py 加一個間隔任務。狀態跟兩個現有遊戲一樣是單例；傷害計算讀 Character 的等級與屬性。關鍵設計：傷害累積在記憶體，公告固定每 30 秒一次（用 loop.call_later，和終極密碼的流局倒數同一套寫法），絕對不要每次攻擊都回覆。",
+     risk:"發話量（用彙總公告解決）；還有「潛水的人被動參與」要不要算——建議算，因為那正是它的價值。",
+     files:["commands/games/boss.py（新）","scheduler.py","model/character.py"]},
+    {cat:"top", cost:"low", title:"關台結算（不需要新指令）",
+     desc:"Bot 收到 Ctrl+C 開始收尾時，先發一則本場統計：「今天有 34 人來聊天，共 812 則發言，最活躍的是 @某某（87 則），@某某某 升到了 12 等」。",
+     value:"它把「今天有來」變成一件被看見的事。觀眾在關台前最後看到的一則訊息是自己的名字，那個記憶點比任何指令都強。對頻道主也是免費的收尾儀式感。",
+     tech:"main.shutdown() 已經有完整的收尾流程（P1-13），在最前面插一步「發送本場統計」即可——那時 IRC 還沒關。統計數字來自本場的記憶體計數（新增一個輕量的 session 計數器），不要去查 MongoDB 撈全表。這是整份清單裡投入報酬比最好的一項。",
+     risk:"收尾有 10 秒總時限，所以這一步要放在最前面而且只發一則；發送失敗只能記 log 不能擋住後面的清理（現有的 shutdown() 每一步各自 try，照著寫就好）。",
+     files:["main.py（shutdown）","chat/message_controller.py"]},
+    {cat:"top", cost:"low", title:"剪輯點標記（!精華）",
+     desc:"觀眾覺得剛剛那段好笑就打 !精華，Bot 把「當下時間 + 誰標的 + 前後 10 秒」記進 MongoDB。收尾時或隔天用一個小指令把清單倒出來。",
+     value:"這一項的價值不在觀眾，在頻道主——剪精華最花時間的是「找點」，而觀眾的笑聲就是最準的偵測器。同時觀眾會發現「我標的段落真的被剪出來了」，那是很強的參與感。",
+     tech:"新增 commands/highlight.py 與一個新 collection。要注意同一個時間點會被很多人同時標，所以要合併：30 秒內的標記算同一個點，累計人數，人數就是熱度排序的依據。清單怎麼交給頻道主：最省事的是關台時貼進聊天室（完全不需要外部改動），寫回 Google Sheets 才要微服務加寫入端點。",
+     risk:"幾乎沒有。這是純加值。",
+     files:["commands/highlight.py（新）","clients/mongo_atlas.py"]},
+    {cat:"retain", cost:"low", title:"連續開台簽到（!簽到）",
+     desc:"連續參與 N 場給遞增獎勵，斷一場重算。第 3／7／15 場有里程碑獎勵與稱號。",
+     value:"連續紀錄是最便宜的回訪動機。斷掉會可惜，所以會回來。",
+     tech:"Character 加 last_seen_date 與 streak 兩個欄位（記得用 utils/time_utils.today_tw()，不然跨日判斷會錯）；差額更新的機制已經有了（P2-23）。",
+     risk:"「連續」要用場次而不是日期——同一天開兩場不該算兩次，隔一天沒開台也不該算斷掉。所以要記的是「上次是哪一場」，開台時產生一個 session id。",
+     files:["model/character.py","utils/time_utils.py"]},
+    {cat:"retain", cost:"low", title:"稱號系統（!稱號）",
+     desc:"達成條件解鎖可展示的稱號（「首殺」「梗王」「散財童子」「潛水艇」），顯示在 !INFO 與排行榜。條件與名稱全放試算表。",
+     value:"稱號是零成本的炫耀品——不影響數值平衡，卻能讓人特意去達成條件。而且它讓「非戰鬥型」的貢獻也有位置（投稿梗、標精華、陪聊）。",
+     tech:"Character 加 titles 與 active_title 兩個欄位。解鎖檢查掛在現有的存檔路徑上，不要新增排程。內容可以無限擴充而不用改程式，正是試算表當 CMS 的最佳用例。",
+     files:["model/character.py","commands/profile.py","commands/ranking.py"]},
+    {cat:"retain", cost:"low", title:"回鍋歡迎",
+     desc:"超過 14 天沒出現的人回來時，招呼語換成「好久不見」版本。",
+     value:"被記得比被歡迎更有份量，而成本極低。",
+     tech:"chat/greeter.py 已經有一行註解掉的備用字尾（好久不見）——這個想法早就在那裡了，資料也已經有（Character 的 updated_at）。",
+     files:["chat/greeter.py","model/character.py"]},
+    {cat:"retain", cost:"mid", ext:true, title:"週報（統計圖表）",
+     desc:"每週固定時間，由 n8n 產出一張圖表（本週最活躍／最會賺／升級最多），Bot 貼連結。",
+     value:"有數據的社群會自己形成話題（「我這週怎麼掉出前五」）。",
+     tech:"n8n 的 TM AI Agent 已經有統計圖表工具，這一項幾乎不用寫程式——難點在「資料怎麼給它」，最單純的做法是讓 n8n 直接讀 mongo-atlas-svc。",
+     risk:"Bot 只在開台時活著，所以「每週固定時間」實際上是「該週第一次開台時」。",
+     files:["n8n 工作流","clients/mongo_atlas.py"]},
+    {cat:"engage", cost:"low", title:"猜歌（!猜歌）",
+     desc:"用現有的虎喵歌單出題：Bot 給提示（頻道名／標題挖空／發布年份），最快答對的人得獎。",
+     value:"題庫就是虎喵自己的歌單，所以答題的過程順便在推歌。",
+     tech:"clients/youtube.py 的歌單資料已經在快取裡；比對邏輯可以直接借用 search() 的模糊比對。這是「已有資料還沒被玩起來」的典型例子。",
+     files:["clients/youtube.py","commands/songs.py"]},
+    {cat:"engage", cost:"mid", ext:true, title:"諧音梗投稿（!投梗）",
+     desc:"觀眾投稿的梗直接寫回 Google Sheets 並標記投稿人；被 !梗 抽中時顯示「本梗由 @某某 貢獻」。",
+     value:"UGC 的威力在於被抽中的那一刻——那個人會截圖。而且梗會自己長出來，不用頻道主一直想。",
+     tech:"需要 google-sheets-svc 加一個寫入端點（目前只有讀）。一定要有審核欄位：新投稿先進「待審」狀態，標記通過才會進抽取池。",
+     risk:"這是唯一會把「觀眾輸入」變成「Bot 之後會唸出來的內容」的玩法，所以審核不是加分項而是必要條件。",
+     files:["commands/meme.py","google-sheets-svc（需寫入端點）"]},
+    {cat:"engage", cost:"mid", title:"賭盤（!開盤 / !押）",
+     desc:"管理員針對這場的事件開盤（「這關會不會過」），觀眾用金幣押注，管理員結算後依賠率分錢。",
+     value:"把「看虎喵玩」變成「跟著緊張」。這是實況主專屬的互動形式。",
+     tech:"與一桶金（commands/games/gold_rush.py）幾乎同構，可以直接參考它的投注與結算流程；差別是有兩個以上的選項與人工結算。",
+     risk:"建議設每場押注上限，並且只用聊天室金幣、永遠不碰真錢。金幣通膨的話抽卡與 VIP 的定價會失效——加上限比事後調整容易得多。",
+     files:["commands/games/gold_rush.py（參考）","model/character.py"]},
+    {cat:"engage", cost:"low", title:"!pk 升級成真的 PvP",
+     desc:"現在是「打好玩的、不用錢、沒獎勵」（試算表上自己這樣寫）。可以加上：等級與屬性影響勝率、勝者從敗者拿走一小筆金幣、連勝紀錄進稱號。",
+     value:"現有的 AI 旁白已經很有趣了，缺的只是「有輸有贏」。",
+     tech:"commands/duel.py 已經有勝者驗證（P2-41），加金流走 Character.spend_gold() / gain_gold() 就好（P2-24 的既有機制）。",
+     risk:"要防「找小號互刷」——建議加冷卻與等級差限制。",
+     files:["commands/duel.py","model/character.py"]},
+    {cat:"engage", cost:"low", title:"首殺／頭香的正式化",
+     desc:"on_points 已經在處理「頭香，前來報到」的忠誠點數兌換，但目前只寫 log。可以變成真的頭香榜：每場第一個兌換的人上榜，累計次數換稱號。",
+     value:"觀眾已經在搶了，只是搶到之後什麼都沒發生。",
+     tech:"bot.py 的 on_points。資料結構跟排行榜同一套。事件已經收到了，只是還沒用，所以成本很低。",
+     files:["bot.py","commands/ranking.py"]},
+    {cat:"onboard", cost:"low", title:"!help 自助說明",
+     desc:"現在觀眾要知道有哪些指令，得看上線那一則公告貼的試算表網址（滑掉就沒了）。!help 應該回一句「常用：!INFO !抽 !吃 !梗 !YT｜完整清單：（試算表網址）」。",
+     value:"新觀眾不會問「這裡有什麼可以玩」，他們會直接離開。這是投入最少、擋掉最多流失的一項。",
+     tech:"新增 commands/help.py。網址讀 config（P3-36 已經統一好了）。常用指令清單建議也放試算表的一個欄位，這樣調整不用改程式。一小時內能做完。",
+     files:["commands/help.py（新）","config/config_common.yaml"]},
+    {cat:"onboard", cost:"low", title:"新手包",
+     desc:"首次發言除了招呼，再給 30 Gold 與一張抽獎券，並用一句話告訴他「打 !help 看能玩什麼」。",
+     value:"第一次發言是最容易流失的一刻，給一個立刻能用的東西比給資訊有效。",
+     tech:"chat/greeter.py 已經知道誰是第一次（who_arrived），但那是「本場第一次」；真正的新人要看 MongoDB 有沒有這個人（Character.load_or_create 分得出來）。",
+     risk:"這兩個「第一次」不一樣，很容易寫錯成「每場都送」。",
+     files:["chat/greeter.py","model/character.py"]},
+    {cat:"event", cost:"mid", title:"雙倍經驗時段（!雙倍 30）",
+     desc:"管理員限定，限時把經驗與金幣倍率調高，開始與結束都公告。",
+     value:"給頻道主一個「現在是特別時刻」的按鈕，配合達標慶祝或衝人數時用。",
+     tech:"倍率目前在 config_common.yaml 的 rpg_parameter；加一層「臨時倍率 ＋ 到期時間」，chat/message_controller.py 給獎勵時乘上去。倒數結束要公告，用終極密碼流局那套 call_later 寫法。",
+     files:["config/config_common.yaml","chat/message_controller.py"]},
+    {cat:"event", cost:"mid", title:"節慶抽卡池",
+     desc:"抽卡的獎項表（commands/gacha.py 的 ITEMS ／ REWARD_MAP）目前寫在程式裡。搬到試算表之後，換一張表就是換一個池（春節限定、萬聖節限定）。",
+     value:"價值在之後每次活動都不用改程式。",
+     tech:"搬到試算表時要保留現有的設定表健檢（tests/test_gacha.py 有驗「權重與獎勵必須反向排序」）——那個檢查就是防止換池時把機率調成負收益。",
+     files:["commands/gacha.py","tests/test_gacha.py"]},
+    {cat:"event", cost:"mid", ext:true, title:"里程碑彩帶",
+     desc:"追隨者數、總發言數、總金幣數達到整數關卡時自動慶祝。",
+     value:"整數關卡是天然的話題，而且是全頻道共享的成就。",
+     tech:"發言與金幣的總數在 MongoDB 就有；追隨者數要 Helix API（channel:read:follows scope，目前沒有申請）。建議先做不需要新 scope 的那幾個。",
+     files:["clients/mongo_atlas.py","bot.py"]},
+    {cat:"line", st:"rejected", title:"真錢相關的任何東西",
+     desc:"打賞排行、實體獎品、任何把聊天室數值換成金錢的機制。",
+     reason:"金幣可以通膨、可以歸零，真錢不行。VIP 兌換已經是「用參與度換實質好處」的上限了。"},
+    {cat:"line", st:"rejected", title:"無上限的抽卡加價與保底機制",
+     desc:"「花更多抽更好」「N 抽保底」這類常見的手遊機制。",
+     reason:"現在是 20 Gold 十連抽、獎勵表反向排序（期望值可控）。任何「保底」「加倍抽」都會把它推向另一種東西。",
+     files:["commands/gacha.py"]},
+    {cat:"line", st:"rejected", title:"自動私訊觀眾",
+     desc:"開台通知、回鍋提醒、活動宣傳等主動發送的私訊。",
+     reason:"技術上做得到，但那是騷擾，而且會被 Twitch 判定為 spam。"},
+    {cat:"line", st:"rejected", title:"把 AI 問答變成主動搭話",
+     desc:"讓 AI 在聊天室安靜時自己找話題，或針對別人的對話插話。",
+     reason:"commands/ai_chat.py 現在是被叫才答。讓 Bot 主動插話會吃掉發話配額、也會蓋掉真人的對話——聊天室的主角是觀眾。",
+     files:["commands/ai_chat.py"]},
+    {cat:"line", st:"rejected", title:"每則發言都回覆的玩法",
+     desc:"任何「一個人一則回覆」的設計，例如逐一報傷害、逐一報獎勵。",
+     reason:"這是發話上限的直接後果，不是保守——30 秒 18 則，20 人同時參與就已經超了。"}
+  ];
+
+  function renderIdea(it){
+    // 不採納的項目沒有成本可談（擋它的是原則不是工時），用一個 ✕ 佔住同一個位置保持對齊
+    var cost = it.cost
+      ? '<span class="sev ' + it.cost + '">' + COST_LABEL[it.cost] + '</span>'
+      : '<span class="sev high">✕</span>';
+    var ext = it.ext ? '<span class="sug-pri">需外部改動</span>' : "";
+    var stHtml = it.st ? '<span class="sug-st ' + it.st + '">' + IDEA_ST_LABEL[it.st] + '</span>' : "";
+    var body = '<p>' + it.desc + '</p>';
+    if (it.value)  body += '<div class="fix value">' + it.value + '</div>';
+    if (it.reason) body += '<div class="fix reason">' + it.reason + '</div>';
+    if (it.tech)   body += '<div class="idea-note"><b>技術落點</b>：' + it.tech + '</div>';
+    if (it.risk)   body += '<div class="idea-note warn"><b>風險</b>：' + it.risk + '</div>';
+    if (it.files)  body += '<div class="files">' + filesHtml(it.files) + '</div>';
+    return '<button class="sug-head" type="button" aria-expanded="false">' +
+        cost +
+        '<span class="sug-cat">' + IDEA_CAT_LABEL[it.cat] + '</span>' +
+        '<span class="sug-title">' + it.title + '</span>' +
+        ext + stHtml +
+        '<span class="sug-arrow">▶</span>' +
+      '</button>' +
+      '<div class="sug-body">' + body + '</div>';
   }
 
-  var stChips = Array.prototype.slice.call(
-    document.querySelectorAll("#sugStatusToolbar .chip")
-  );
-  var catChips = Array.prototype.slice.call(
-    document.querySelectorAll("#sugToolbar .chip")
-  );
-
-  stChips.forEach(function(chip){
-    var st = chip.getAttribute("data-st");
-    chip.querySelector(".cnt").textContent = SUGGESTIONS.filter(function(s){
-      return matchSt(s, st);
-    }).length;
-    chip.addEventListener("click", function(){
-      stChips.forEach(function(c){ c.classList.remove("active"); });
-      chip.classList.add("active");
-      curSt = st;
-      applyFilters();
-    });
+  mountPanel({
+    listId: "ideaList",
+    stToolbarId: "ideaStatusToolbar",
+    catToolbarId: "ideaToolbar",
+    items: IDEAS,
+    render: renderIdea,
+    defaultSt: "open"
   });
-
-  catChips.forEach(function(chip){
-    chip.addEventListener("click", function(){
-      catChips.forEach(function(c){ c.classList.remove("active"); });
-      chip.classList.add("active");
-      curCat = chip.getAttribute("data-cat");
-      applyFilters();
-    });
-  });
-
-  applyFilters();
 
 })();
 </script>
